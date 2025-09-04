@@ -1,6 +1,6 @@
 # ui/app.py
 """
-Streamlit UI for name and address validation
+Updated Streamlit UI for name and address validation with new format
 """
 
 import streamlit as st
@@ -22,7 +22,7 @@ from utils.logger import logger
 
 
 class ValidatorApp:
-    """Main Streamlit application"""
+    """Enhanced Streamlit application with new format support"""
     
     def __init__(self):
         self.service = ValidationService()
@@ -39,7 +39,7 @@ class ValidatorApp:
             }
     
     def apply_styling(self):
-        """Apply custom CSS styling"""
+        """Apply enhanced CSS styling"""
         st.markdown("""
         <style>
         .main {
@@ -83,18 +83,41 @@ class ValidatorApp:
             display: inline-block;
             margin: 0.5rem;
         }
+        
+        .result-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+        
+        .confidence-high {
+            color: #059669;
+            font-weight: bold;
+        }
+        
+        .confidence-medium {
+            color: #d97706;
+            font-weight: bold;
+        }
+        
+        .confidence-low {
+            color: #dc2626;
+            font-weight: bold;
+        }
         </style>
         """, unsafe_allow_html=True)
     
     def render_header(self):
-        """Render application header"""
+        """Render enhanced application header"""
         name_available = self.service.is_name_validation_available()
         address_available = self.service.is_address_validation_available()
         
         st.markdown('''
         <div class="header">
-            <div class="title">Name & Address Validator</div>
-            <div class="subtitle">Professional validation platform with USPS integration</div>
+            <div class="title">Name & Address Validator v2.0</div>
+            <div class="subtitle">Enhanced AI-powered validation with intelligent detection</div>
         </div>
         ''', unsafe_allow_html=True)
         
@@ -104,7 +127,7 @@ class ValidatorApp:
         with col2:
             status_html = ""
             if name_available:
-                status_html += '<span class="status-success">✓ Name Validation Ready</span>'
+                status_html += '<span class="status-success">✓ AI Name Validation Ready</span>'
             else:
                 status_html += '<span class="status-warning">⚠ Name Service Unavailable</span>'
             
@@ -116,8 +139,8 @@ class ValidatorApp:
             st.markdown(f'<div style="text-align: center;">{status_html}</div>', unsafe_allow_html=True)
     
     def render_name_validation(self):
-        """Render name validation interface"""
-        st.markdown("## 👤 Name Validation")
+        """Render enhanced name validation interface"""
+        st.markdown("## 👤 Enhanced Name Validation with AI")
         
         # Single name validation
         with st.expander("Single Name Validation", expanded=True):
@@ -125,64 +148,76 @@ class ValidatorApp:
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    first_name = st.text_input("First Name", placeholder="Enter first name")
+                    full_name = st.text_input("Full Name", placeholder="Enter full name (e.g., Dr. William Smith Jr.)")
                 
                 with col2:
-                    last_name = st.text_input("Last Name", placeholder="Enter last name")
+                    col2a, col2b, col2c = st.columns(3)
+                    
+                    with col2a:
+                        gender_cd = st.selectbox("Gender", ["", "M", "F"], help="Leave empty for AI prediction")
+                    
+                    with col2b:
+                        party_type_cd = st.selectbox("Party Type", ["", "I", "O"], help="I=Individual, O=Organization, empty=AI detection")
+                    
+                    with col2c:
+                        parse_ind = st.selectbox("Parse", ["Y", "N"], help="Y=Parse name components")
                 
                 submitted = st.form_submit_button("🔍 Validate Name", type="primary")
                 
-                if submitted and first_name and last_name:
-                    with st.spinner("Validating..."):
-                        result = self.service.validate_single_name(first_name, last_name)
-                        self._display_name_result(result)
+                if submitted and full_name:
+                    with st.spinner("Processing with AI..."):
+                        # Create name record
+                        name_record = {
+                            'uniqueID': '1',
+                            'fullName': full_name,
+                            'genderCd': gender_cd,
+                            'partyTypeCd': party_type_cd,
+                            'parseInd': parse_ind
+                        }
+                        
+                        # Validate using new format
+                        result = self.service.validate_names({'names': [name_record]})
+                        
+                        if result['names']:
+                            self._display_enhanced_name_result(result['names'][0])
         
-        # API Testing
-        with st.expander("API Testing"):
-            st.markdown("### Test API Payload")
+        # Enhanced API Testing
+        with st.expander("Enhanced API Testing (v2.0 Format)"):
+            st.markdown("### Test New API Format")
             
-            default_payload = {
-                "records": [
-                    {
-                        "uniqueid": "001",
-                        "name": "John Michael Smith",
-                        "gender": "",
-                        "party_type": "I",
-                        "parseInd": "Y"
-                    },
-                    {
-                        "uniqueid": "002",
-                        "name": "TechCorp Solutions LLC",
-                        "gender": "",
-                        "party_type": "O",
-                        "parseInd": "N"
-                    }
-                ]
-            }
+            # Get example payload
+            default_payload = self.service.get_example_payload()
             
             json_input = st.text_area(
-                "JSON Payload:",
+                "JSON Payload (v2.0 Format):",
                 value=json.dumps(default_payload, indent=2),
-                height=250
+                height=300
             )
             
-            if st.button("🚀 Test API", type="primary"):
+            if st.button("🚀 Test Enhanced API", type="primary"):
                 try:
                     payload = json.loads(json_input)
-                    records = payload.get('records', [])
                     
-                    with st.spinner("Processing API request..."):
-                        result = self.service.process_api_records(records)
+                    with st.spinner("Processing with AI enhancements..."):
+                        result = self.service.validate_names(payload)
+                        
                         st.success("✅ API request processed successfully")
-                        st.json(result)
+                        
+                        # Display results in a nice format
+                        for name_result in result['names']:
+                            self._display_enhanced_name_result(name_result)
+                        
+                        # Show raw JSON for developers
+                        with st.expander("Raw JSON Response"):
+                            st.json(result)
                         
                 except json.JSONDecodeError:
                     st.error("❌ Invalid JSON format")
                 except Exception as e:
                     st.error(f"❌ Error: {str(e)}")
         
-        # CSV Upload
-        with st.expander("CSV Upload"):
+        # Enhanced CSV Upload
+        with st.expander("Enhanced CSV Upload"):
             uploaded_file = st.file_uploader("Choose CSV file", type=['csv'])
             
             if uploaded_file is not None:
@@ -190,8 +225,12 @@ class ValidatorApp:
                     df = pd.read_csv(uploaded_file)
                     st.success(f"✅ File uploaded: {len(df)} rows")
                     
-                    if st.button("🔄 Process CSV", type="primary"):
-                        with st.spinner("Processing CSV..."):
+                    # Show preview
+                    st.write("Preview:")
+                    st.dataframe(df.head())
+                    
+                    if st.button("🔄 Process with AI Enhancement", type="primary"):
+                        with st.spinner("Processing CSV with AI..."):
                             result = self.service.process_csv_names(df)
                             
                             if result['success']:
@@ -199,8 +238,18 @@ class ValidatorApp:
                                 st.write(f"Success rate: {result['success_rate']:.1%}")
                                 
                                 if result['results']:
+                                    # Create enhanced results DataFrame
                                     results_df = pd.DataFrame(result['results'])
-                                    st.dataframe(results_df)
+                                    st.dataframe(results_df, use_container_width=True)
+                                    
+                                    # Download button
+                                    csv = results_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="📥 Download Results",
+                                        data=csv,
+                                        file_name=f"validated_names_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                        mime="text/csv"
+                                    )
                             else:
                                 st.error(f"❌ {result['error']}")
                                 
@@ -208,7 +257,7 @@ class ValidatorApp:
                     st.error(f"❌ Error reading file: {str(e)}")
     
     def render_address_validation(self):
-        """Render address validation interface"""
+        """Render address validation interface (unchanged)"""
         st.markdown("## 🏠 Address Validation")
         
         # Check if service is available
@@ -267,8 +316,8 @@ class ValidatorApp:
                         self._display_address_result(result)
     
     def render_monitoring(self):
-        """Render monitoring dashboard"""
-        st.markdown("## 📊 System Monitoring")
+        """Render enhanced monitoring dashboard"""
+        st.markdown("## 📊 System Monitoring & Analytics")
         
         # Service status
         status = self.service.get_service_status()
@@ -276,21 +325,21 @@ class ValidatorApp:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            name_status = "✅ Available" if status['name_validation_available'] else "❌ Unavailable"
+            name_status = "✅ Enhanced AI Ready" if status['name_validation_available'] else "❌ Unavailable"
             st.metric("Name Service", name_status)
         
         with col2:
-            addr_status = "✅ Available" if status['address_validation_available'] else "❌ Unavailable"
+            addr_status = "✅ USPS Connected" if status['address_validation_available'] else "❌ Unavailable"
             st.metric("Address Service", addr_status)
         
         with col3:
-            st.metric("API Version", status['api_version'])
+            st.metric("API Version", f"v{status['api_version']}")
         
         # Processing stats
         stats = st.session_state.processing_stats
         
         st.markdown("### Processing Statistics")
-        col4, col5, col6 = st.columns(3)
+        col4, col5, col6, col7 = st.columns(4)
         
         with col4:
             st.metric("Total Processed", stats['total_processed'])
@@ -300,6 +349,32 @@ class ValidatorApp:
         
         with col6:
             st.metric("Failed", stats['failed'])
+        
+        with col7:
+            success_rate = (stats['successful'] / stats['total_processed'] * 100) if stats['total_processed'] > 0 else 0
+            st.metric("Success Rate", f"{success_rate:.1f}%")
+        
+        # Feature showcase
+        st.markdown("### AI Enhancement Features")
+        col8, col9 = st.columns(2)
+        
+        with col8:
+            st.markdown("""
+            **🤖 Intelligent Detection:**
+            - Smart gender prediction from names
+            - Organization vs Individual classification
+            - Nickname standardization (Bill → William)
+            - Prefix/suffix extraction
+            """)
+        
+        with col9:
+            st.markdown("""
+            **📊 Enhanced Accuracy:**
+            - Multi-factor confidence scoring
+            - Dictionary-based validation
+            - Pattern recognition algorithms
+            - Real-time error detection
+            """)
         
         # Recent logs
         recent_logs = logger.get_recent_logs(10)
@@ -331,47 +406,98 @@ class ValidatorApp:
             st.success("Statistics cleared!")
             st.rerun()
     
-    def _display_name_result(self, result: dict):
-        """Display name validation result"""
-        col1, col2, col3 = st.columns(3)
+    def _display_enhanced_name_result(self, result: dict):
+        """Display enhanced name validation result"""
+        
+        # Determine confidence level for styling
+        confidence = float(result.get('confidenceScore', '0'))
+        if confidence >= 90:
+            confidence_class = "confidence-high"
+            confidence_icon = "🟢"
+        elif confidence >= 70:
+            confidence_class = "confidence-medium"
+            confidence_icon = "🟡"
+        else:
+            confidence_class = "confidence-low"
+            confidence_icon = "🔴"
+        
+        st.markdown('<div class="result-card">', unsafe_allow_html=True)
+        
+        # Header with confidence
+        col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
-            status = "✅ Valid" if result['valid'] else "❌ Invalid"
-            st.metric("Status", status)
+            st.markdown(f"### {result['fullName']}")
         
         with col2:
-            confidence = result.get('confidence', 0)
-            st.metric("Confidence", f"{confidence:.1%}")
+            st.markdown(f"**Party Type:** {result['partyTypeCd']}")
         
         with col3:
-            processing_time = result.get('processing_time_ms', 0)
-            st.metric("Processing Time", f"{processing_time}ms")
+            st.markdown(f"**Status:** {result['parseStatus']}")
         
-        # Normalized name
-        if 'normalized' in result:
-            normalized = result['normalized']
-            st.success(f"**Normalized:** {normalized['first_name']} {normalized['last_name']}")
+        # Confidence and error message
+        st.markdown(f"""
+        {confidence_icon} **Confidence:** <span class="{confidence_class}">{confidence}%</span>  
+        **Message:** {result['errorMessage']}
+        """, unsafe_allow_html=True)
         
-        # Errors and warnings
-        if result.get('errors'):
-            st.error("**Errors:**")
-            for error in result['errors']:
-                st.write(f"- {error}")
+        # Parsed components (if individual)
+        if result['partyTypeCd'] == 'I' and result['parseInd'] == 'Y':
+            st.markdown("#### 🔍 Parsed Components")
+            
+            comp_col1, comp_col2, comp_col3 = st.columns(3)
+            
+            with comp_col1:
+                if result['prefix']:
+                    st.write(f"**Prefix:** {result['prefix']}")
+                st.write(f"**First Name:** {result['firstName'] or 'N/A'}")
+                if result['firstNameStd'] and result['firstNameStd'] != result['firstName']:
+                    st.write(f"**Standardized:** {result['firstNameStd']}")
+            
+            with comp_col2:
+                if result['middleName']:
+                    st.write(f"**Middle Name:** {result['middleName']}")
+                st.write(f"**Last Name:** {result['lastName'] or 'N/A'}")
+            
+            with comp_col3:
+                if result['suffix']:
+                    st.write(f"**Suffix:** {result['suffix']}")
+                
+                # Gender prediction
+                gender_display = result['outGenderCd'] if result['outGenderCd'] else 'Unknown'
+                if result['outGenderCd'] and not result['inGenderCd']:
+                    gender_display += " (AI Predicted)"
+                st.write(f"**Gender:** {gender_display}")
         
-        if result.get('warnings'):
-            st.warning("**Warnings:**")
-            for warning in result['warnings']:
-                st.write(f"- {warning}")
+        # Literal (uppercase) versions
+        if result['parseInd'] == 'Y':
+            with st.expander("📝 Literal Formats"):
+                literal_parts = []
+                if result['prefixLt']:
+                    literal_parts.append(f"Prefix: {result['prefixLt']}")
+                if result['firstNameLt']:
+                    literal_parts.append(f"First: {result['firstNameLt']}")
+                if result['middleNameLt']:
+                    literal_parts.append(f"Middle: {result['middleNameLt']}")
+                if result['lastNameLt']:
+                    literal_parts.append(f"Last: {result['lastNameLt']}")
+                if result['suffixLt']:
+                    literal_parts.append(f"Suffix: {result['suffixLt']}")
+                
+                if literal_parts:
+                    st.write(" | ".join(literal_parts))
+        
+        st.markdown('</div>', unsafe_allow_html=True)
         
         # Update stats
         st.session_state.processing_stats['total_processed'] += 1
-        if result['valid']:
+        if result['parseStatus'] in ['Parsed', 'Not Parsed']:
             st.session_state.processing_stats['successful'] += 1
         else:
             st.session_state.processing_stats['failed'] += 1
     
     def _display_address_result(self, result: dict):
-        """Display address validation result"""
+        """Display address validation result (unchanged)"""
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -380,7 +506,7 @@ class ValidatorApp:
         
         with col2:
             name_result = result.get('name_result', {})
-            name_status = "✅ Valid" if name_result.get('valid', False) else "❌ Invalid"
+            name_status = "✅ Valid" if name_result.get('parseStatus') in ['Parsed', 'Not Parsed'] else "❌ Invalid"
             st.metric("Name", name_status)
         
         with col3:
@@ -423,8 +549,8 @@ class ValidatorApp:
         """Main application entry point"""
         # Configure page
         st.set_page_config(
-            page_title="Name & Address Validator",
-            page_icon="🔍",
+            page_title="Name & Address Validator v2.0",
+            page_icon="🤖",
             layout="wide",
             initial_sidebar_state="collapsed"
         )
@@ -437,9 +563,9 @@ class ValidatorApp:
         
         # Main tabs
         name_tab, address_tab, monitoring_tab = st.tabs([
-            "👤 Name Validation",
+            "🤖 Enhanced Name Validation",
             "🏠 Address Validation", 
-            "📊 Monitoring"
+            "📊 Monitoring & Analytics"
         ])
         
         with name_tab:

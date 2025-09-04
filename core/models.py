@@ -1,6 +1,6 @@
 # core/models.py
 """
-Pydantic models for the name and address validator
+Updated Pydantic models for the name and address validator with new format
 """
 
 from pydantic import BaseModel, Field
@@ -10,15 +10,15 @@ from datetime import datetime
 
 # API Request Models
 class NameRecord(BaseModel):
-    uniqueid: str = Field(..., description="Unique identifier for the record")
-    name: str = Field(..., description="Full name to validate")
-    gender: Optional[str] = Field("", description="Optional gender hint (M/F)")
-    party_type: Optional[str] = Field("", description="Optional party type (I/O)")
-    parseInd: Optional[str] = Field("", description="Parse indicator (Y/N)")
+    uniqueID: str = Field(..., description="Unique identifier for the record")
+    fullName: str = Field(..., description="Full name to validate")
+    genderCd: Optional[str] = Field("", description="Gender code (M/F/empty)")
+    partyTypeCd: Optional[str] = Field("", description="Party type code (I/O/empty)")
+    parseInd: Optional[str] = Field("", description="Parse indicator (Y/N/empty)")
 
 
 class NameValidationRequest(BaseModel):
-    records: List[NameRecord] = Field(..., description="List of name records to validate")
+    names: List[NameRecord] = Field(..., description="List of name records to validate")
 
 
 class AddressRecord(BaseModel):
@@ -31,40 +31,31 @@ class AddressRecord(BaseModel):
 
 
 # Response Models
-class ParsedComponents(BaseModel):
-    first_name: Optional[str] = ""
-    last_name: Optional[str] = ""
-    middle_name: Optional[str] = ""
-    organization_name: Optional[str] = ""
-
-
-class Suggestions(BaseModel):
-    name_suggestions: Optional[List[str]] = []
-    gender_prediction: Optional[str] = ""
-    party_type_prediction: Optional[str] = ""
-
-
-class ValidationResult(BaseModel):
-    uniqueid: str
-    name: str
-    gender: str
-    party_type: str
-    parse_indicator: str
-    validation_status: str
-    confidence_score: float
-    parsed_components: ParsedComponents
-    suggestions: Suggestions
-    errors: List[str]
-    warnings: List[str]
+class NameValidationResult(BaseModel):
+    uniqueID: str
+    partyTypeCd: str
+    prefix: Optional[str] = None
+    firstName: Optional[str] = None
+    firstNameStd: Optional[str] = None
+    middleName: Optional[str] = None
+    lastName: Optional[str] = None
+    suffix: Optional[str] = None
+    fullName: str
+    inGenderCd: str
+    outGenderCd: str
+    prefixLt: Optional[str] = None
+    firstNameLt: Optional[str] = None
+    middleNameLt: Optional[str] = None
+    lastNameLt: Optional[str] = None
+    suffixLt: Optional[str] = None
+    parseInd: str
+    confidenceScore: str
+    parseStatus: str
+    errorMessage: str
 
 
 class NameValidationResponse(BaseModel):
-    status: str
-    processed_count: int
-    successful_count: int
-    results: List[ValidationResult]
-    processing_time_ms: int
-    timestamp: str
+    names: List[NameValidationResult]
 
 
 class AddressValidationResult(BaseModel):

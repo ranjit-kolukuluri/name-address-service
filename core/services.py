@@ -1,6 +1,6 @@
 # core/services.py
 """
-Main validation service that combines name and address validation
+Updated validation service with new input/output format
 """
 
 import time
@@ -16,16 +16,16 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from core.validators import NameValidator, AddressValidator
-from core.models import ValidationResult, ParsedComponents, Suggestions
+from core.models import NameValidationResult
 from utils.logger import logger
 from utils.config import Config
 
 
 class ValidationService:
-    """Main validation service"""
+    """Main validation service with updated format support"""
     
     def __init__(self, dictionary_path: str = "/Users/t93uyz8/Documents/name_dictionaries"):
-        self.name_validator = NameValidator()
+        self.name_validator = NameValidator(dictionary_path)
         self.address_validator = AddressValidator()
         logger.info("Validation service initialized", "SERVICE")
     
@@ -46,10 +46,57 @@ class ValidationService:
             'timestamp': datetime.now().isoformat()
         }
     
-    def validate_single_name(self, first_name: str, last_name: str) -> Dict:
-        """Validate a single name"""
-        logger.info(f"Validating name: {first_name} {last_name}", "SERVICE")
-        return self.name_validator.validate(first_name, last_name)
+    def validate_names(self, names_data: Dict) -> Dict:
+        """
+        Validate names using the new format
+        
+        Input: {"names": [{"uniqueID": "1", "fullName": "Bill Smith", ...}]}
+        Output: {"names": [{"uniqueID": "1", "firstName": "Bill", ...}]}
+        """
+        start_time = time.time()
+        
+        names = names_data.get('names', [])
+        results = []
+        
+        logger.info(f"Processing {len(names)} name records", "SERVICE")
+        
+        for name_record in names:
+            try:
+                # Validate single name record
+                result = self.name_validator.validate_name_record(name_record)
+                results.append(result)
+                
+            except Exception as e:
+                # Create error result
+                error_result = {
+                    'uniqueID': name_record.get('uniqueID', ''),
+                    'partyTypeCd': '',
+                    'prefix': None,
+                    'firstName': None,
+                    'firstNameStd': None,
+                    'middleName': None,
+                    'lastName': None,
+                    'suffix': None,
+                    'fullName': name_record.get('fullName', ''),
+                    'inGenderCd': name_record.get('genderCd', ''),
+                    'outGenderCd': '',
+                    'prefixLt': None,
+                    'firstNameLt': None,
+                    'middleNameLt': None,
+                    'lastNameLt': None,
+                    'suffixLt': None,
+                    'parseInd': name_record.get('parseInd', ''),
+                    'confidenceScore': '0.0',
+                    'parseStatus': 'Error',
+                    'errorMessage': f'Processing error: {str(e)}'
+                }
+                results.append(error_result)
+                logger.error(f"Error processing name record {name_record.get('uniqueID')}: {e}", "SERVICE")
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        logger.info(f"Name validation completed in {processing_time}ms", "SERVICE")
+        
+        return {'names': results}
     
     def validate_single_address(self, address_data: Dict) -> Dict:
         """Validate a single address"""
@@ -74,8 +121,17 @@ class ValidationService:
         }
         
         try:
+            # Create name record for validation
+            name_record = {
+                'uniqueID': 'temp',
+                'fullName': f"{first_name} {last_name}",
+                'genderCd': '',
+                'partyTypeCd': 'I',
+                'parseInd': 'Y'
+            }
+            
             # Validate name
-            name_result = self.name_validator.validate(first_name, last_name)
+            name_result = self.name_validator.validate_name_record(name_record)
             result['name_result'] = name_result
             
             # Validate address
@@ -89,13 +145,13 @@ class ValidationService:
             result['address_result'] = address_result
             
             # Calculate overall results
-            name_valid = name_result.get('valid', False)
+            name_valid = name_result.get('parseStatus') in ['Parsed', 'Not Parsed']
             address_deliverable = address_result.get('deliverable', False)
             
             result['overall_valid'] = name_valid and address_deliverable
             
             # Calculate confidence
-            name_confidence = name_result.get('confidence', 0)
+            name_confidence = float(name_result.get('confidenceScore', '0')) / 100
             address_confidence = address_result.get('confidence', 0)
             result['overall_confidence'] = (name_confidence + address_confidence) / 2
             
@@ -107,180 +163,13 @@ class ValidationService:
         result['processing_time_ms'] = int((time.time() - start_time) * 1000)
         return result
     
-    def process_api_records(self, records: List[Dict]) -> Dict:
-        """Process records from API payload"""
-        
-        start_time = time.time()
-        results = []
-        successful_count = 0
-        
-        logger.info(f"Processing {len(records)} API records", "SERVICE")
-        
-        for i, record in enumerate(records):
-            try:
-                result = self._process_single_api_record(record)
-                results.append(result)
-                
-                if result['validation_status'] != 'error':
-                    successful_count += 1
-                    
-            except Exception as e:
-                error_result = self._create_error_result(record, str(e))
-                results.append(error_result)
-                logger.error(f"Error processing record {i+1}: {e}", "SERVICE")
-        
-        processing_time = int((time.time() - start_time) * 1000)
-        
-        return {
-            'status': 'success',
-            'processed_count': len(results),
-            'successful_count': successful_count,
-            'results': results,
-            'processing_time_ms': processing_time,
-            'timestamp': datetime.now().isoformat()
-        }
-    
-    def _process_single_api_record(self, record: Dict) -> Dict:
-        """Process a single API record with enhanced AI analysis"""
-        
-        uniqueid = record['uniqueid']
-        name = record['name'].strip()
-        gender_hint = record.get('gender', '').strip()
-        party_type_hint = record.get('party_type', '').strip()
-        parse_ind = record.get('parseInd', '').strip()
-        
-        # Initialize result with enhanced fields
-        result = {
-            'uniqueid': uniqueid,
-            'name': name,
-            'gender': gender_hint,
-            'party_type': party_type_hint,
-            'parse_indicator': parse_ind,
-            'validation_status': 'valid',
-            'confidence_score': 0.0,
-            'parsed_components': {},
-            'suggestions': {},
-            'errors': [],
-            'warnings': [],
-            'ai_analysis': {
-                'dictionary_lookup_used': False,
-                'ai_fallback_used': False,
-                'prediction_method': 'none'
-            }
-        }
-        
-        # Enhanced organization detection with AI
-        is_org = self.name_validator.is_organization(name)
-        
-        if is_org:
-            # Handle organization with enhanced analysis
-            result['party_type'] = 'O'
-            result['gender'] = ''
-            result['parse_indicator'] = 'N'
-            result['parsed_components'] = ParsedComponents(
-                organization_name=name
-            ).dict()
-            result['confidence_score'] = 0.92
-            result['ai_analysis'] = {
-                'dictionary_lookup_used': True,
-                'ai_fallback_used': True,
-                'prediction_method': 'organization_detection_ai'
-            }
-            
-        else:
-            # Handle individual name with AI enhancement
-            result['party_type'] = 'I'
-            
-            # Parse name if requested
-            if parse_ind.upper() == 'Y' or parse_ind == '':
-                parsed = self.name_validator.parse_full_name(name)
-                result['parsed_components'] = ParsedComponents(**parsed).dict()
-                result['parse_indicator'] = 'Y'
-                
-                # Enhanced validation with AI
-                if parsed['first_name'] or parsed['last_name']:
-                    validation_result = self.name_validator.validate(
-                        parsed['first_name'], parsed['last_name']
-                    )
-                    
-                    result['validation_status'] = 'valid' if validation_result['valid'] else 'warning'
-                    result['confidence_score'] = validation_result['confidence']
-                    
-                    # Add AI analysis info
-                    if 'analysis' in validation_result:
-                        analysis = validation_result['analysis']
-                        first_in_dict = analysis.get('first_name', {}).get('found_in_dictionary', False)
-                        last_in_dict = analysis.get('last_name', {}).get('found_in_dictionary', False)
-                        
-                        result['ai_analysis'] = {
-                            'dictionary_lookup_used': first_in_dict or last_in_dict,
-                            'ai_fallback_used': not (first_in_dict and last_in_dict),
-                            'prediction_method': 'hybrid_dictionary_ai' if (first_in_dict or last_in_dict) else 'pure_ai',
-                            'first_name_in_dictionary': first_in_dict,
-                            'last_name_in_dictionary': last_in_dict
-                        }
-                    
-                    if validation_result.get('warnings'):
-                        result['warnings'].extend(validation_result['warnings'])
-                else:
-                    result['validation_status'] = 'invalid'
-                    result['errors'].append('Could not parse name into valid components')
-                    result['confidence_score'] = 0.2
-                
-                # Enhanced gender prediction with AI analysis
-                if not gender_hint and parsed['first_name']:
-                    predicted_gender = self.name_validator.predict_gender(parsed['first_name'])
-                    if predicted_gender:
-                        result['gender'] = predicted_gender
-                        result['suggestions'] = Suggestions(
-                            gender_prediction=predicted_gender
-                        ).dict()
-                        
-                        # Add gender prediction method info
-                        if 'ai_analysis' not in result:
-                            result['ai_analysis'] = {}
-                        result['ai_analysis']['gender_prediction_method'] = 'dictionary_first_ai_fallback'
-            else:
-                result['parse_indicator'] = 'N'
-                result['parsed_components'] = ParsedComponents(
-                    first_name='',
-                    last_name='',
-                    middle_name=''
-                ).dict()
-                result['confidence_score'] = 0.6
-        
-        # Add party type prediction if not provided
-        if not party_type_hint and 'suggestions' not in result:
-            result['suggestions'] = Suggestions().dict()
-        
-        if not party_type_hint:
-            result['suggestions']['party_type_prediction'] = result['party_type']
-        
-        return result
-    
-    def _create_error_result(self, record: Dict, error_message: str) -> Dict:
-        """Create error result for failed processing"""
-        return {
-            'uniqueid': record.get('uniqueid', ''),
-            'name': record.get('name', ''),
-            'gender': '',
-            'party_type': '',
-            'parse_indicator': '',
-            'validation_status': 'error',
-            'confidence_score': 0.0,
-            'parsed_components': ParsedComponents().dict(),
-            'suggestions': Suggestions().dict(),
-            'errors': [error_message],
-            'warnings': []
-        }
-    
     def process_csv_names(self, df: pd.DataFrame) -> Dict:
-        """Process names from CSV DataFrame"""
+        """Process names from CSV DataFrame with new format"""
         
         logger.info(f"Processing CSV with {len(df)} rows", "SERVICE")
         
         # Try to find name column
-        name_columns = ['name', 'full_name', 'fullname', 'Name', 'FULL_NAME']
+        name_columns = ['name', 'full_name', 'fullname', 'fullName', 'Name', 'FULL_NAME']
         name_col = None
         
         for col in name_columns:
@@ -294,38 +183,95 @@ class ValidationService:
                 'error': f'Name column not found. Available columns: {list(df.columns)}'
             }
         
-        results = []
-        successful = 0
-        
+        # Convert DataFrame to names format
+        names_data = []
         for idx, row in df.iterrows():
             full_name = str(row[name_col]).strip()
             
             if full_name and full_name != 'nan':
-                parsed = self.name_validator.parse_full_name(full_name)
-                
-                if parsed['first_name'] or parsed['last_name']:
-                    validation = self.name_validator.validate(
-                        parsed['first_name'], parsed['last_name']
-                    )
-                    
-                    results.append({
-                        'row_number': idx + 1,
-                        'original_name': full_name,
-                        'first_name': parsed['first_name'],
-                        'last_name': parsed['last_name'],
-                        'middle_name': parsed['middle_name'],
-                        'valid': validation['valid'],
-                        'confidence': validation['confidence']
-                    })
-                    
-                    if validation['valid']:
-                        successful += 1
+                name_record = {
+                    'uniqueID': str(idx + 1),
+                    'fullName': full_name,
+                    'genderCd': '',
+                    'partyTypeCd': '',
+                    'parseInd': 'Y'
+                }
+                names_data.append(name_record)
+        
+        if not names_data:
+            return {
+                'success': False,
+                'error': 'No valid names found in CSV'
+            }
+        
+        # Process using new validation
+        results = self.validate_names({'names': names_data})
+        
+        # Convert results for CSV output
+        csv_results = []
+        successful = 0
+        
+        for result in results['names']:
+            csv_result = {
+                'row_number': result['uniqueID'],
+                'original_name': result['fullName'],
+                'prefix': result['prefix'] or '',
+                'first_name': result['firstName'] or '',
+                'first_name_std': result['firstNameStd'] or '',
+                'middle_name': result['middleName'] or '',
+                'last_name': result['lastName'] or '',
+                'suffix': result['suffix'] or '',
+                'gender': result['outGenderCd'],
+                'party_type': result['partyTypeCd'],
+                'confidence_score': result['confidenceScore'],
+                'parse_status': result['parseStatus'],
+                'error_message': result['errorMessage']
+            }
+            csv_results.append(csv_result)
+            
+            if result['parseStatus'] in ['Parsed', 'Not Parsed']:
+                successful += 1
         
         return {
             'success': True,
             'total_records': len(df),
-            'processed_records': len(results),
+            'processed_records': len(csv_results),
             'successful_validations': successful,
-            'success_rate': successful / len(results) if results else 0,
-            'results': results
+            'success_rate': successful / len(csv_results) if csv_results else 0,
+            'results': csv_results
+        }
+    
+    def get_example_payload(self) -> Dict:
+        """Get example payload for testing"""
+        return {
+            "names": [
+                {
+                    "uniqueID": "1",
+                    "fullName": "Bill Smith",
+                    "genderCd": "M",
+                    "partyTypeCd": "I",
+                    "parseInd": "Y"
+                },
+                {
+                    "uniqueID": "2",
+                    "fullName": "Dr. Sarah Johnson-Williams",
+                    "genderCd": "",
+                    "partyTypeCd": "",
+                    "parseInd": "Y"
+                },
+                {
+                    "uniqueID": "3",
+                    "fullName": "TechCorp Solutions LLC",
+                    "genderCd": "",
+                    "partyTypeCd": "O",
+                    "parseInd": "N"
+                },
+                {
+                    "uniqueID": "4",
+                    "fullName": "Mr. Michael Thompson Jr.",
+                    "genderCd": "",
+                    "partyTypeCd": "I",
+                    "parseInd": "Y"
+                }
+            ]
         }
