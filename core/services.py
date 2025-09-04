@@ -1,6 +1,6 @@
 # core/services.py
 """
-Updated validation service with dictionary integration and AI fallback
+Updated validation service with dictionary integration and enhanced address processing
 """
 
 import time
@@ -22,7 +22,7 @@ from utils.config import Config
 
 
 class ValidationService:
-    """Enhanced validation service with dictionary integration and AI fallback"""
+    """Enhanced validation service with dictionary integration and batch address processing"""
     
     def __init__(self, dictionary_path: str = "/Users/t93uyz8/Documents/name_dictionaries"):
         self.name_validator = NameValidator(dictionary_path)
@@ -176,9 +176,70 @@ class ValidationService:
             }
         }
     
+    def validate_addresses(self, addresses_data: Dict) -> Dict:
+        """
+        Enhanced batch address validation
+        """
+        start_time = time.time()
+        
+        addresses = addresses_data.get('addresses', [])
+        
+        if not self.is_address_validation_available():
+            # Return error results for all addresses
+            error_results = []
+            for addr in addresses:
+                error_result = self.address_validator._create_error_result(addr, 'USPS API not configured')
+                error_results.append(error_result)
+            
+            return {
+                'addresses': error_results,
+                'processing_stats': {
+                    'total_processed': len(addresses),
+                    'successful': 0,
+                    'failed': len(addresses),
+                    'processing_time_ms': int((time.time() - start_time) * 1000),
+                    'usps_configured': False
+                }
+            }
+        
+        logger.info(f"Processing {len(addresses)} addresses with USPS validation", "SERVICE")
+        
+        # Validate addresses in batch
+        results = self.address_validator.validate_addresses_batch(addresses)
+        
+        # Calculate success/failure stats
+        successful = 0
+        failed = 0
+        
+        for result in results:
+            if result.get('errorMsg') is None and result.get('mailabilityScore') == '1':
+                successful += 1
+            else:
+                failed += 1
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        logger.info(
+            f"Address validation completed in {processing_time}ms - "
+            f"Successful: {successful}, Failed: {failed}",
+            "SERVICE"
+        )
+        
+        return {
+            'addresses': results,
+            'processing_stats': {
+                'total_processed': len(results),
+                'successful': successful,
+                'failed': failed,
+                'success_rate': (successful / len(results)) if results else 0,
+                'processing_time_ms': processing_time,
+                'usps_configured': True
+            }
+        }
+    
     def validate_single_address(self, address_data: Dict) -> Dict:
-        """Validate a single address"""
-        logger.info(f"Validating address: {address_data.get('street_address')}", "SERVICE")
+        """Validate a single address (legacy method)"""
+        logger.info(f"Validating single address", "SERVICE")
         return self.address_validator.validate_address(address_data)
     
     def validate_complete_record(self, first_name: str, last_name: str,
@@ -350,6 +411,75 @@ class ValidationService:
             'results': csv_results
         }
     
+    def process_csv_addresses(self, df: pd.DataFrame) -> Dict:
+        """Process addresses from CSV with automatic format standardization"""
+        
+        logger.info(f"Processing address CSV with {len(df)} rows", "SERVICE")
+        
+        try:
+            # Standardize CSV format to address format
+            standardized_addresses = self.address_validator.standardize_csv_to_address_format(df)
+            
+            if not standardized_addresses:
+                return {
+                    'success': False,
+                    'error': 'No valid addresses found in CSV'
+                }
+            
+            # Validate addresses using batch processing
+            validation_result = self.validate_addresses({'addresses': standardized_addresses})
+            results = validation_result['addresses']
+            processing_stats = validation_result.get('processing_stats', {})
+            
+            # Convert results for CSV output
+            csv_results = []
+            successful = 0
+            
+            for result in results:
+                is_valid = result.get('errorMsg') is None and result.get('mailabilityScore') == '1'
+                
+                csv_result = {
+                    'guid': result['guid'],
+                    'input_line1': result['inLine1'] or '',
+                    'input_city': result['inLine6'] or '',
+                    'input_state': result['inLine7'] or '',
+                    'input_zip': result['inLine8'] or '',
+                    'validated_line1': result['deliveryAddressLine1'] or '',
+                    'validated_city': result['city'] or '',
+                    'validated_state': result['stateCd'] or '',
+                    'validated_zip': result['zipCdComplete'] or '',
+                    'county_name': result['countyName'] or '',
+                    'carrier_route': result['carrierRoute'] or '',
+                    'congressional_district': result['congressionalDistrict'] or '',
+                    'mailability_score': result['mailabilityScore'] or '0',
+                    'match_code': result['matchCode'] or '',
+                    'result_percentage': result['ResultPercentage'] or '0.00',
+                    'is_valid': is_valid,
+                    'error_message': result['errorMsg'] or ''
+                }
+                csv_results.append(csv_result)
+                
+                if is_valid:
+                    successful += 1
+            
+            return {
+                'success': True,
+                'total_records': len(df),
+                'processed_records': len(csv_results),
+                'successful_validations': successful,
+                'success_rate': successful / len(csv_results) if csv_results else 0,
+                'usps_configured': self.is_address_validation_available(),
+                'processing_stats': processing_stats,
+                'results': csv_results
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing address CSV: {e}", "SERVICE")
+            return {
+                'success': False,
+                'error': f'CSV processing failed: {str(e)}'
+            }
+    
     def get_example_payload(self) -> Dict:
         """Get enhanced example payload for testing"""
         return {
@@ -388,6 +518,41 @@ class ValidationService:
                     "genderCd": "",
                     "partyTypeCd": "",
                     "parseInd": "Y"
+                }
+            ]
+        }
+    
+    def get_example_address_payload(self) -> Dict:
+        """Get example address payload for testing"""
+        return {
+            "addresses": [
+                {
+                    "guid": "1",
+                    "line1": "1394 N SAINT LOUIS",
+                    "line2": None,
+                    "line3": None,
+                    "line4": None,
+                    "line5": None,
+                    "city": "BATESVILLE",
+                    "stateCd": "AR",
+                    "zipCd": "72501",
+                    "countryCd": "US",
+                    "verificationInd": "Y",
+                    "onlyOneAddrInd": "N"
+                },
+                {
+                    "guid": "2",
+                    "line1": "123 Main Street",
+                    "line2": "Apt 4B",
+                    "line3": None,
+                    "line4": None,
+                    "line5": None,
+                    "city": "New York",
+                    "stateCd": "NY",
+                    "zipCd": "10001",
+                    "countryCd": "US",
+                    "verificationInd": "Y",
+                    "onlyOneAddrInd": "N"
                 }
             ]
         }

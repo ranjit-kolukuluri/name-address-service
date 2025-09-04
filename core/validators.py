@@ -1,5 +1,5 @@
 """
-Enhanced validation logic for names and addresses with dictionary integration and AI fallback
+Enhanced validation logic for names and addresses with dictionary integration and batch processing
 """
 
 import requests
@@ -695,7 +695,7 @@ class NameValidator:
 
 
 class AddressValidator:
-    """USPS Address Validator (unchanged from original)"""
+    """Enhanced USPS Address Validator with batch processing and CSV standardization"""
     
     def __init__(self):
         self.client_id, self.client_secret = load_usps_credentials()
@@ -747,53 +747,119 @@ class AddressValidator:
             logger.error(f"USPS auth error: {e}", "USPS")
             return None
     
-    def validate_address(self, address_data: Dict) -> Dict:
-        """Validate address using USPS API (unchanged from original)"""
+    def standardize_csv_to_address_format(self, df: pd.DataFrame) -> List[Dict]:
+        """Standardize heterogeneous CSV formats to standard address format"""
+        logger.info(f"Standardizing CSV with {len(df)} rows to address format", "VALIDATOR")
+        
+        # Define possible column mappings for different CSV formats
+        column_mappings = {
+            'guid': ['guid', 'id', 'unique_id', 'record_id', 'address_id', 'idx', 'index'],
+            'line1': ['line1', 'address_line_1', 'address1', 'street_address', 'street', 'addr1', 'address'],
+            'line2': ['line2', 'address_line_2', 'address2', 'apartment', 'apt', 'suite', 'unit', 'addr2'],
+            'city': ['city', 'town', 'municipality'],
+            'stateCd': ['state_cd', 'state', 'state_code', 'st', 'province'],
+            'zipCd': ['zip_cd', 'zip', 'zip_code', 'postal_code', 'zipcode', 'postcode'],
+            'countryCd': ['country_cd', 'country', 'country_code']
+        }
+        
+        # Find matching columns
+        field_mappings = {}
+        available_columns = [col.lower().replace(' ', '_') for col in df.columns]
+        
+        for target_field, possible_names in column_mappings.items():
+            for possible_name in possible_names:
+                if possible_name in available_columns:
+                    original_col = df.columns[available_columns.index(possible_name)]
+                    field_mappings[target_field] = original_col
+                    break
+        
+        logger.info(f"Column mappings found: {field_mappings}", "VALIDATOR")
+        
+        # Convert to standard format
+        standardized_addresses = []
+        
+        for idx, row in df.iterrows():
+            address = {
+                'guid': str(row.get(field_mappings.get('guid', ''), idx + 1)),
+                'line1': str(row.get(field_mappings.get('line1', ''), '')).strip() or None,
+                'line2': str(row.get(field_mappings.get('line2', ''), '')).strip() or None,
+                'line3': None,
+                'line4': None,
+                'line5': None,
+                'city': str(row.get(field_mappings.get('city', ''), '')).strip(),
+                'stateCd': str(row.get(field_mappings.get('stateCd', ''), '')).strip().upper(),
+                'zipCd': str(row.get(field_mappings.get('zipCd', ''), '')).strip(),
+                'countryCd': str(row.get(field_mappings.get('countryCd', ''), 'US')).strip().upper(),
+                'verificationInd': 'Y',
+                'onlyOneAddrInd': 'N'
+            }
+            
+            # Clean up empty strings to None
+            for key in ['line1', 'line2', 'city', 'stateCd', 'zipCd']:
+                if address[key] == '' or address[key] == 'nan':
+                    if key in ['city', 'stateCd', 'zipCd']:
+                        address[key] = ''  # Required fields should be empty string, not None
+                    else:
+                        address[key] = None
+            
+            standardized_addresses.append(address)
+        
+        logger.info(f"Standardized {len(standardized_addresses)} addresses", "VALIDATOR")
+        return standardized_addresses
+    
+    def validate_addresses_batch(self, addresses: List[Dict]) -> List[Dict]:
+        """Validate multiple addresses"""
+        logger.info(f"Batch validating {len(addresses)} addresses", "VALIDATOR")
+        
+        results = []
+        
+        for address in addresses:
+            try:
+                result = self.validate_single_address(address)
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Error validating address {address.get('guid', 'unknown')}: {e}", "VALIDATOR")
+                # Create error result
+                error_result = self._create_error_result(address, str(e))
+                results.append(error_result)
+        
+        logger.info(f"Batch validation completed: {len(results)} results", "VALIDATOR")
+        return results
+    
+    def validate_single_address(self, address_data: Dict) -> Dict:
+        """Validate a single address using USPS API and return enhanced format"""
         
         if not self.is_configured():
-            return {
-                'success': False,
-                'error': 'USPS API not configured',
-                'deliverable': False
-            }
+            return self._create_error_result(address_data, 'USPS API not configured')
         
         access_token = self.get_access_token()
         if not access_token:
-            return {
-                'success': False,
-                'error': 'Failed to get access token',
-                'deliverable': False
-            }
+            return self._create_error_result(address_data, 'Failed to get access token')
         
-        # Extract address components
-        street_address = address_data.get('street_address', '').strip()
+        # Extract and validate required fields
+        line1 = address_data.get('line1', '').strip()
         city = address_data.get('city', '').strip()
-        state = address_data.get('state', '').strip().upper()
-        zip_code = str(address_data.get('zip_code', '')).strip()
+        state_cd = address_data.get('stateCd', '').strip().upper()
+        zip_cd = str(address_data.get('zipCd', '')).strip()
         
-        # Basic validation
-        if not all([street_address, city, state, zip_code]):
+        if not all([line1, city, state_cd, zip_cd]):
             missing = []
-            if not street_address: missing.append('street_address')
+            if not line1: missing.append('line1')
             if not city: missing.append('city')
-            if not state: missing.append('state')
-            if not zip_code: missing.append('zip_code')
+            if not state_cd: missing.append('stateCd')
+            if not zip_cd: missing.append('zipCd')
             
-            return {
-                'success': False,
-                'error': f"Missing required fields: {', '.join(missing)}",
-                'deliverable': False
-            }
+            return self._create_error_result(address_data, f"Missing required fields: {', '.join(missing)}")
         
         # Parse street address for apartment/unit
-        street_parts = self._parse_street_address(street_address)
+        street_parts = self._parse_street_address(line1)
         
-        # Build query parameters
+        # Build query parameters for USPS API
         params = {
             'streetAddress': street_parts['street'].upper(),
             'city': city.upper(),
-            'state': state.upper(),
-            'ZIPCode': zip_code[:5]
+            'state': state_cd.upper(),
+            'ZIPCode': zip_cd[:5]
         }
         
         if street_parts['unit']:
@@ -808,33 +874,17 @@ class AddressValidator:
             response = requests.get(Config.USPS_VALIDATE_URL, headers=headers, params=params, timeout=15)
             
             if response.status_code == 200:
-                return self._parse_success_response(response.json())
+                return self._parse_usps_success_response(response.json(), address_data)
             elif response.status_code == 400:
-                return {
-                    'success': False,
-                    'error': 'Invalid address format',
-                    'deliverable': False
-                }
+                return self._create_error_result(address_data, 'Invalid address format')
             elif response.status_code == 404:
-                return {
-                    'success': False,
-                    'error': 'Address not found',
-                    'deliverable': False
-                }
+                return self._create_error_result(address_data, 'Address not found')
             else:
-                return {
-                    'success': False,
-                    'error': f'API error: HTTP {response.status_code}',
-                    'deliverable': False
-                }
+                return self._create_error_result(address_data, f'API error: HTTP {response.status_code}')
                 
         except Exception as e:
             logger.error(f"USPS validation error: {e}", "USPS")
-            return {
-                'success': False,
-                'error': 'Validation request failed',
-                'deliverable': False
-            }
+            return self._create_error_result(address_data, 'Validation request failed')
     
     def _parse_street_address(self, address: str) -> Dict[str, str]:
         """Parse street address into main and unit components"""
@@ -861,54 +911,204 @@ class AddressValidator:
         
         return {'street': address, 'unit': ''}
     
-    def _parse_success_response(self, response_data: Dict) -> Dict:
-        """Parse successful USPS response"""
+    def _parse_usps_success_response(self, response_data: Dict, original_address: Dict) -> Dict:
+        """Parse successful USPS response into enhanced format"""
         
         if not response_data.get('address'):
-            return {
-                'success': False,
-                'error': 'No address data in response',
-                'deliverable': False
-            }
+            return self._create_error_result(original_address, 'No address data in response')
         
         address = response_data.get('address', {})
         additional_info = response_data.get('additionalInfo', {})
         
-        # Check deliverability
-        dpv_confirmation = additional_info.get('DPVConfirmation', '')
-        is_deliverable = dpv_confirmation in ['Y', 'D']
-        
-        # Build standardized address
-        street_address = address.get('streetAddress', '')
-        if address.get('secondaryAddress'):
-            street_address += f" {address.get('secondaryAddress')}"
-        
-        zip_code = address.get('ZIPCode', '')
-        if address.get('ZIPPlus4'):
-            zip_code += f"-{address.get('ZIPPlus4')}"
-        
-        standardized = {
-            'street_address': street_address.strip(),
+        # Build enhanced result
+        result = {
+            'guid': original_address.get('guid', ''),
+            'line1': original_address.get('line1'),
+            'line2': original_address.get('line2'),
+            'line3': original_address.get('line3'),
+            'line4': original_address.get('line4'),
+            'line5': original_address.get('line5'),
+            
+            # Delivery address (standardized by USPS)
+            'deliveryAddressLine1': address.get('streetAddress', ''),
+            'deliveryAddressLine2': address.get('secondaryAddress'),
+            'deliveryAddressLine3': None,
+            'deliveryAddressLine4': None,
+            'deliveryAddressLine5': None,
+            
+            # Location information
             'city': address.get('city', ''),
-            'state': address.get('state', ''),
-            'zip_code': zip_code
+            'stateCd': address.get('state', ''),
+            'zipCd': address.get('ZIPCode', ''),
+            'zipCd4': address.get('ZIPPlus4'),
+            'zipCdComplete': f"{address.get('ZIPCode', '')}-{address.get('ZIPPlus4', '')}" if address.get('ZIPPlus4') else address.get('ZIPCode', ''),
+            
+            # Enhanced address information
+            'countyName': additional_info.get('county', '').upper() if additional_info.get('county') else None,
+            'countyCd': additional_info.get('countyFIPS'),
+            'countryName': 'UNITED STATES',
+            'countryCd': 'US',
+            
+            # Validation scores and codes
+            'mailabilityScore': '1' if additional_info.get('DPVConfirmation') in ['Y', 'D'] else '0',
+            'mailabilityScoreDesc': None,
+            'matchCode': self._determine_match_code(additional_info),
+            'matchCodeDesc': None,
+            'CASSErrorCode': None,
+            
+            # Additional USPS data
+            'barcode': additional_info.get('barcode'),
+            'carrierRoute': additional_info.get('carrierRoute'),
+            'congressionalDistrict': additional_info.get('congressionalDistrict'),
+            'deliveryPointCd': additional_info.get('deliveryPoint'),
+            'zipMoveReturnCd': None,
+            'CASSERPStatus': None,
+            'residentialDeliveryIndicator': 'Y' if additional_info.get('business', 'N') == 'N' else 'N',
+            
+            # Coordinates (if available)
+            'latitude': None,
+            'longitude': None,
+            
+            # Status
+            'errorMsg': None,
+            'completeAddress': f"{address.get('streetAddress', '')} {address.get('secondaryAddress', '')}".strip(),
+            
+            # Input echo
+            'inLine1': original_address.get('line1'),
+            'inLine2': original_address.get('line2'),
+            'inLine3': original_address.get('line3'),
+            'inLine4': original_address.get('line4'),
+            'inLine5': original_address.get('line5'),
+            'inLine6': original_address.get('city'),
+            'inLine7': original_address.get('stateCd'),
+            'inLine8': original_address.get('zipCd'),
+            'inCountryCd': original_address.get('countryCd'),
+            'inVerificationInd': original_address.get('verificationInd'),
+            'inOnlyOneAddrInd': original_address.get('onlyOneAddrInd'),
+            
+            # Additional fields
+            'RecipientLine1': None,
+            'RecipientLine2': None,
+            'ResidueSuperfluous1': None,
+            'ResidueSuperfluous2': None,
+            'ResultPercentage': '100.00' if additional_info.get('DPVConfirmation') in ['Y', 'D'] else '50.00'
         }
         
-        metadata = {
-            'business': additional_info.get('business', 'N') == 'Y',
-            'vacant': additional_info.get('vacant', 'N') == 'Y',
-            'centralized': additional_info.get('centralDeliveryPoint', 'N') == 'Y',
-            'carrier_route': additional_info.get('carrierRoute', ''),
-            'delivery_point': additional_info.get('deliveryPoint', ''),
-            'dpv_confirmation': dpv_confirmation
+        return result
+    
+    def _determine_match_code(self, additional_info: Dict) -> str:
+        """Determine match code based on USPS response"""
+        dpv_confirmation = additional_info.get('DPVConfirmation', '')
+        
+        if dpv_confirmation == 'Y':
+            return 'A1'  # Exact match
+        elif dpv_confirmation == 'D':
+            return 'B1'  # Default match
+        elif dpv_confirmation == 'N':
+            return 'C3'  # No match
+        else:
+            return 'C3'  # Default to no match
+    
+    def _create_error_result(self, original_address: Dict, error_message: str) -> Dict:
+        """Create error result in enhanced format"""
+        return {
+            'guid': original_address.get('guid', ''),
+            'line1': original_address.get('line1'),
+            'line2': original_address.get('line2'),
+            'line3': original_address.get('line3'),
+            'line4': original_address.get('line4'),
+            'line5': original_address.get('line5'),
+            'deliveryAddressLine1': None,
+            'deliveryAddressLine2': None,
+            'deliveryAddressLine3': None,
+            'deliveryAddressLine4': None,
+            'deliveryAddressLine5': None,
+            'city': original_address.get('city'),
+            'stateCd': original_address.get('stateCd'),
+            'zipCd': original_address.get('zipCd'),
+            'zipCd4': None,
+            'zipCdComplete': original_address.get('zipCd'),
+            'countyName': None,
+            'countyCd': None,
+            'countryName': None,
+            'countryCd': original_address.get('countryCd'),
+            'mailabilityScore': '0',
+            'mailabilityScoreDesc': None,
+            'matchCode': 'E1',  # Error code
+            'matchCodeDesc': None,
+            'CASSErrorCode': None,
+            'barcode': None,
+            'carrierRoute': None,
+            'congressionalDistrict': None,
+            'deliveryPointCd': None,
+            'zipMoveReturnCd': None,
+            'CASSERPStatus': None,
+            'residentialDeliveryIndicator': None,
+            'latitude': None,
+            'longitude': None,
+            'errorMsg': error_message,
+            'completeAddress': None,
+            'inLine1': original_address.get('line1'),
+            'inLine2': original_address.get('line2'),
+            'inLine3': original_address.get('line3'),
+            'inLine4': original_address.get('line4'),
+            'inLine5': original_address.get('line5'),
+            'inLine6': original_address.get('city'),
+            'inLine7': original_address.get('stateCd'),
+            'inLine8': original_address.get('zipCd'),
+            'inCountryCd': original_address.get('countryCd'),
+            'inVerificationInd': original_address.get('verificationInd'),
+            'inOnlyOneAddrInd': original_address.get('onlyOneAddrInd'),
+            'RecipientLine1': None,
+            'RecipientLine2': None,
+            'ResidueSuperfluous1': None,
+            'ResidueSuperfluous2': None,
+            'ResultPercentage': '0.00'
         }
+    
+    # Legacy method for backward compatibility
+    def validate_address(self, address_data: Dict) -> Dict:
+        """Legacy address validation method"""
+        # Convert legacy format to new format
+        new_format = {
+            'guid': '1',
+            'line1': address_data.get('street_address', ''),
+            'line2': None,
+            'line3': None,
+            'line4': None,
+            'line5': None,
+            'city': address_data.get('city', ''),
+            'stateCd': address_data.get('state', ''),
+            'zipCd': str(address_data.get('zip_code', '')),
+            'countryCd': 'US',
+            'verificationInd': 'Y',
+            'onlyOneAddrInd': 'N'
+        }
+        
+        result = self.validate_single_address(new_format)
+        
+        # Convert back to legacy format
+        is_deliverable = result.get('mailabilityScore') == '1'
         
         return {
-            'success': True,
+            'success': result.get('errorMsg') is None,
             'valid': is_deliverable,
             'deliverable': is_deliverable,
-            'standardized': standardized,
-            'metadata': metadata,
+            'standardized': {
+                'street_address': result.get('deliveryAddressLine1', ''),
+                'city': result.get('city', ''),
+                'state': result.get('stateCd', ''),
+                'zip_code': result.get('zipCdComplete', '')
+            },
+            'metadata': {
+                'business': result.get('residentialDeliveryIndicator') == 'N',
+                'vacant': False,  # Not provided by enhanced format
+                'centralized': False,  # Not provided by enhanced format
+                'carrier_route': result.get('carrierRoute', ''),
+                'delivery_point': result.get('deliveryPointCd', ''),
+                'dpv_confirmation': 'Y' if is_deliverable else 'N'
+            },
             'confidence': 0.95 if is_deliverable else 0.3,
-            'validation_method': 'usps_api_v3'
+            'validation_method': 'usps_api_v3',
+            'error': result.get('errorMsg')
         }

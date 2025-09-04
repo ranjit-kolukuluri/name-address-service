@@ -1,6 +1,6 @@
 # ui/app.py
 """
-Updated Streamlit UI for name and address validation with dictionary integration
+Updated Streamlit UI for name and address validation with enhanced address processing
 """
 
 import streamlit as st
@@ -22,7 +22,7 @@ from utils.logger import logger
 
 
 class ValidatorApp:
-    """Enhanced Streamlit application with dictionary integration"""
+    """Enhanced Streamlit application with dictionary integration and batch address processing"""
     
     def __init__(self):
         self.service = ValidationService()
@@ -122,6 +122,14 @@ class ValidatorApp:
             margin: 1rem 0;
         }
         
+        .address-card {
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+        
         .confidence-high {
             color: #059669;
             font-weight: bold;
@@ -156,7 +164,7 @@ class ValidatorApp:
         st.markdown('''
         <div class="header">
             <div class="title">Name & Address Validator v2.0</div>
-            <div class="subtitle">Enhanced with Dictionary Integration + AI Fallback</div>
+            <div class="subtitle">Enhanced with Dictionary Integration + AI Fallback + Batch Address Processing</div>
         </div>
         ''', unsafe_allow_html=True)
         
@@ -174,7 +182,7 @@ class ValidatorApp:
                 status_html += '<span class="status-warning">⚠ Name Service Unavailable</span>'
             
             if address_available:
-                status_html += '<span class="status-success">✓ USPS API Connected</span>'
+                status_html += '<span class="status-success">✓ USPS Batch Processing Ready</span>'
             else:
                 status_html += '<span class="status-warning">⚠ USPS API Not Configured</span>'
             
@@ -365,63 +373,191 @@ class ValidatorApp:
                     st.error(f"❌ Error reading file: {str(e)}")
     
     def render_address_validation(self):
-        """Render address validation interface (unchanged)"""
-        st.markdown("## 🏠 Address Validation")
+        """Render enhanced address validation interface (no name fields)"""
+        st.markdown("## 🏠 Enhanced Address Validation")
         
         # Check if service is available
-        if not self.service:
-            st.error("❌ Address validation service not available")
-            return
+        if not self.service.is_address_validation_available():
+            st.warning("⚠️ USPS API not configured. Please set USPS_CLIENT_ID and USPS_CLIENT_SECRET.")
+            st.info("📝 Note: Address validation features are available but require USPS API credentials.")
         
-        try:
-            if not self.service.is_address_validation_available():
-                st.warning("⚠️ USPS API not configured. Please set USPS_CLIENT_ID and USPS_CLIENT_SECRET.")
-                return
-        except Exception as e:
-            st.error(f"Error checking USPS configuration: {e}")
-            return
+        # Single address validation
+        with st.expander("Single Address Validation", expanded=True):
+            with st.form("address_form"):
+                st.markdown("**Address Information**")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    line1 = st.text_input("Address Line 1", placeholder="123 Main Street")
+                    city = st.text_input("City", placeholder="Enter city")
+                
+                with col2:
+                    line2 = st.text_input("Address Line 2 (Optional)", placeholder="Apt 4B, Suite 200")
+                    col2a, col2b = st.columns(2)
+                    
+                    with col2a:
+                        state_cd = st.text_input("State", placeholder="CA", max_chars=2)
+                    
+                    with col2b:
+                        zip_cd = st.text_input("ZIP Code", placeholder="12345")
+                
+                submitted = st.form_submit_button("🔍 Validate Address", type="primary")
+                
+                if submitted:
+                    # Check required fields
+                    if not all([line1, city, state_cd, zip_cd]):
+                        st.error("❌ Address Line 1, City, State, and ZIP Code are required")
+                    else:
+                        with st.spinner("Validating with USPS..."):
+                            # Create address record
+                            address_record = {
+                                'guid': '1',
+                                'line1': line1,
+                                'line2': line2 if line2 else None,
+                                'line3': None,
+                                'line4': None,
+                                'line5': None,
+                                'city': city,
+                                'stateCd': state_cd.upper(),
+                                'zipCd': zip_cd,
+                                'countryCd': 'US',
+                                'verificationInd': 'Y',
+                                'onlyOneAddrInd': 'N'
+                            }
+                            
+                            # Validate using enhanced format
+                            result = self.service.validate_addresses({'addresses': [address_record]})
+                            
+                            if result['addresses']:
+                                self._display_enhanced_address_result(result['addresses'][0])
+                                
+                                # Show processing stats
+                                if 'processing_stats' in result:
+                                    stats = result['processing_stats']
+                                    with st.expander("📊 Processing Details"):
+                                        col_stats1, col_stats2, col_stats3 = st.columns(3)
+                                        with col_stats1:
+                                            st.metric("Processing Time", f"{stats['processing_time_ms']}ms")
+                                        with col_stats2:
+                                            st.metric("USPS Configured", "Yes" if stats['usps_configured'] else "No")
+                                        with col_stats3:
+                                            st.metric("Success Rate", f"{stats.get('success_rate', 0):.1%}")
         
-        with st.form("address_form"):
-            # Name fields
-            st.markdown("**Contact Information**")
-            col1, col2 = st.columns(2)
+        # Enhanced Address API Testing
+        with st.expander("Enhanced Address API Testing"):
+            st.markdown("### Test Enhanced Address API Format")
             
-            with col1:
-                first_name = st.text_input("First Name", placeholder="Enter first name")
+            # Get example address payload
+            default_payload = self.service.get_example_address_payload()
             
-            with col2:
-                last_name = st.text_input("Last Name", placeholder="Enter last name")
-            
-            # Address fields
-            st.markdown("**Address Information**")
-            street_address = st.text_input(
-                "Street Address",
-                placeholder="123 Main Street, Apt 4B"
+            json_input = st.text_area(
+                "JSON Payload (Enhanced Address Format):",
+                value=json.dumps(default_payload, indent=2),
+                height=300
             )
             
-            col3, col4, col5 = st.columns([3, 1, 2])
+            if st.button("🚀 Test Enhanced Address API", type="primary"):
+                try:
+                    payload = json.loads(json_input)
+                    
+                    with st.spinner("Processing with USPS batch validation..."):
+                        result = self.service.validate_addresses(payload)
+                        
+                        st.success("✅ Address API request processed successfully")
+                        
+                        # Display results
+                        for address_result in result['addresses']:
+                            self._display_enhanced_address_result(address_result)
+                        
+                        # Show processing statistics
+                        if 'processing_stats' in result:
+                            stats = result['processing_stats']
+                            with st.expander("📈 Processing Statistics"):
+                                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                                
+                                with col_stat1:
+                                    st.metric("Total Processed", stats['total_processed'])
+                                
+                                with col_stat2:
+                                    st.metric("Successful", stats['successful'])
+                                
+                                with col_stat3:
+                                    st.metric("Failed", stats['failed'])
+                                
+                                with col_stat4:
+                                    st.metric("Success Rate", f"{stats.get('success_rate', 0):.1%}")
+                        
+                        # Show raw JSON for developers
+                        with st.expander("Raw JSON Response"):
+                            st.json(result)
+                        
+                except json.JSONDecodeError:
+                    st.error("❌ Invalid JSON format")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+        
+        # Enhanced CSV Upload for Addresses
+        with st.expander("CSV Address Upload with Auto-Standardization"):
+            st.markdown("### Upload CSV with Address Data")
+            st.info("📋 **Supported formats**: The system automatically detects and standardizes various CSV formats including columns like 'address', 'street', 'city', 'state', 'zip', etc.")
             
-            with col3:
-                city = st.text_input("City", placeholder="Enter city")
+            uploaded_file = st.file_uploader("Choose address CSV file", type=['csv'], key="address_csv")
             
-            with col4:
-                state = st.text_input("State", placeholder="CA", max_chars=2)
-            
-            with col5:
-                zip_code = st.text_input("ZIP Code", placeholder="12345")
-            
-            submitted = st.form_submit_button("🔍 Validate Address", type="primary")
-            
-            if submitted:
-                # Check required fields
-                if not all([first_name, last_name, street_address, city, state, zip_code]):
-                    st.error("❌ All fields are required")
-                else:
-                    with st.spinner("Validating with enhanced name validation + USPS..."):
-                        result = self.service.validate_complete_record(
-                            first_name, last_name, street_address, city, state, zip_code
-                        )
-                        self._display_address_result(result)
+            if uploaded_file is not None:
+                try:
+                    df = pd.read_csv(uploaded_file)
+                    st.success(f"✅ File uploaded: {len(df)} rows")
+                    
+                    # Show preview
+                    st.write("Preview:")
+                    st.dataframe(df.head())
+                    
+                    # Show detected columns
+                    st.write("**Detected Columns:**")
+                    col_info = []
+                    for col in df.columns:
+                        col_info.append(f"• `{col}`")
+                    st.write(" | ".join(col_info))
+                    
+                    if st.button("🔄 Process with Auto-Standardization & USPS Validation", type="primary", key="process_addresses"):
+                        with st.spinner("Standardizing CSV format and validating with USPS..."):
+                            result = self.service.process_csv_addresses(df)
+                            
+                            if result['success']:
+                                st.success(f"✅ Processed {result['processed_records']} addresses")
+                                st.write(f"Success rate: {result['success_rate']:.1%}")
+                                
+                                # Show processing stats
+                                col_addr1, col_addr2, col_addr3 = st.columns(3)
+                                
+                                with col_addr1:
+                                    st.metric("Total Addresses", result['total_records'])
+                                
+                                with col_addr2:
+                                    st.metric("Valid Addresses", result['successful_validations'])
+                                
+                                with col_addr3:
+                                    st.metric("USPS Configured", "Yes" if result['usps_configured'] else "No")
+                                
+                                if result['results']:
+                                    # Create enhanced results DataFrame
+                                    results_df = pd.DataFrame(result['results'])
+                                    st.dataframe(results_df, use_container_width=True)
+                                    
+                                    # Download button
+                                    csv = results_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="📥 Download Address Results",
+                                        data=csv,
+                                        file_name=f"validated_addresses_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                        mime="text/csv"
+                                    )
+                            else:
+                                st.error(f"❌ {result['error']}")
+                                
+                except Exception as e:
+                    st.error(f"❌ Error reading file: {str(e)}")
     
     def render_monitoring(self):
         """Render enhanced monitoring dashboard"""
@@ -437,7 +573,7 @@ class ValidatorApp:
             st.metric("Name Service", name_status)
         
         with col2:
-            addr_status = "✅ USPS Connected" if status['address_validation_available'] else "❌ Unavailable"
+            addr_status = "✅ USPS Batch Ready" if status['address_validation_available'] else "❌ Unavailable"
             st.metric("Address Service", addr_status)
         
         with col3:
@@ -614,65 +750,101 @@ class ValidatorApp:
         else:
             st.session_state.processing_stats['ai_fallback'] += 1
     
-    def _display_address_result(self, result: dict):
-        """Display address validation result (unchanged)"""
-        col1, col2, col3, col4 = st.columns(4)
+    def _display_enhanced_address_result(self, result: dict):
+        """Display enhanced address validation result"""
+        
+        # Determine validation status
+        is_valid = result.get('errorMsg') is None and result.get('mailabilityScore') == '1'
+        match_code = result.get('matchCode', 'Unknown')
+        result_percentage = result.get('ResultPercentage', '0.00')
+        
+        if is_valid:
+            status_icon = "🟢"
+            status_class = "confidence-high"
+            status_text = "Valid & Deliverable"
+        elif result.get('errorMsg'):
+            status_icon = "🔴"
+            status_class = "confidence-low"
+            status_text = "Error"
+        else:
+            status_icon = "🟡"
+            status_class = "confidence-medium"
+            status_text = "Invalid/Undeliverable"
+        
+        st.markdown('<div class="address-card">', unsafe_allow_html=True)
+        
+        # Header
+        col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
-            overall_status = "✅ Valid" if result['overall_valid'] else "❌ Invalid"
-            st.metric("Overall Status", overall_status)
+            input_addr = f"{result.get('inLine1', '')} {result.get('inLine2', '')}".strip()
+            st.markdown(f"### {input_addr}")
         
         with col2:
-            name_result = result.get('name_result', {})
-            name_status = "✅ Valid" if name_result.get('parseStatus') in ['Parsed', 'Not Parsed'] else "❌ Invalid"
-            st.metric("Name", name_status)
+            st.markdown(f"**Match Code:** {match_code}")
         
         with col3:
-            address_result = result.get('address_result', {})
-            address_status = "✅ Deliverable" if address_result.get('deliverable', False) else "❌ Not Deliverable"
-            st.metric("Address", address_status)
+            st.markdown(f"**GUID:** {result.get('guid', 'N/A')}")
         
-        with col4:
-            confidence = result.get('overall_confidence', 0)
-            st.metric("Confidence", f"{confidence:.1%}")
+        # Status and confidence
+        st.markdown(f"""
+        {status_icon} **Status:** <span class="{status_class}">{status_text}</span>  
+        **Result Percentage:** {result_percentage}%  
+        **Mailability Score:** {result.get('mailabilityScore', '0')}
+        """, unsafe_allow_html=True)
         
-        # Show validation methods used
-        validation_methods = result.get('validation_methods', {})
-        if validation_methods:
-            st.markdown("### Validation Methods Used")
-            col_method1, col_method2 = st.columns(2)
-            
-            with col_method1:
-                name_method = validation_methods.get('name_method', 'unknown').replace('_', ' ').title()
-                st.write(f"**Name Validation:** {name_method}")
-            
-            with col_method2:
-                address_method = validation_methods.get('address_method', 'unknown').replace('_', ' ').title()
-                st.write(f"**Address Validation:** {address_method}")
+        # Error message if present
+        if result.get('errorMsg'):
+            st.error(f"❌ Error: {result['errorMsg']}")
         
-        # USPS results
-        if address_result.get('success') and address_result.get('standardized'):
-            st.markdown("### 📮 USPS Standardized Address")
-            standardized = address_result['standardized']
+        # Address details if validated successfully
+        if is_valid:
+            st.markdown("#### 📮 Validated Address")
             
-            st.success(f"""
-            **Standardized Address:**
-            {standardized['street_address']}
-            {standardized['city']}, {standardized['state']} {standardized['zip_code']}
-            """)
+            addr_col1, addr_col2 = st.columns(2)
             
-            # Metadata
-            if address_result.get('metadata'):
-                with st.expander("📊 Address Details"):
-                    metadata = address_result['metadata']
-                    
-                    st.write(f"**Business:** {'Yes' if metadata.get('business') else 'No'}")
-                    st.write(f"**Vacant:** {'Yes' if metadata.get('vacant') else 'No'}")
-                    st.write(f"**DPV Confirmation:** {metadata.get('dpv_confirmation', 'N/A')}")
+            with addr_col1:
+                st.write("**Input Address:**")
+                st.write(f"{result.get('inLine1', '')}")
+                if result.get('inLine2'):
+                    st.write(f"{result.get('inLine2', '')}")
+                st.write(f"{result.get('inLine6', '')}, {result.get('inLine7', '')} {result.get('inLine8', '')}")
+            
+            with addr_col2:
+                st.write("**Standardized Address:**")
+                st.write(f"{result.get('deliveryAddressLine1', '')}")
+                if result.get('deliveryAddressLine2'):
+                    st.write(f"{result.get('deliveryAddressLine2', '')}")
+                st.write(f"{result.get('city', '')}, {result.get('stateCd', '')} {result.get('zipCdComplete', '')}")
+            
+            # Additional details
+            with st.expander("📊 Additional Address Details"):
+                detail_col1, detail_col2, detail_col3 = st.columns(3)
+                
+                with detail_col1:
+                    if result.get('countyName'):
+                        st.write(f"**County:** {result['countyName']}")
+                    if result.get('carrierRoute'):
+                        st.write(f"**Carrier Route:** {result['carrierRoute']}")
+                
+                with detail_col2:
+                    if result.get('congressionalDistrict'):
+                        st.write(f"**Congressional District:** {result['congressionalDistrict']}")
+                    if result.get('residentialDeliveryIndicator'):
+                        is_residential = result['residentialDeliveryIndicator'] == 'Y'
+                        st.write(f"**Type:** {'Residential' if is_residential else 'Business'}")
+                
+                with detail_col3:
+                    if result.get('zipCd4'):
+                        st.write(f"**ZIP+4:** {result['zipCd4']}")
+                    if result.get('deliveryPointCd'):
+                        st.write(f"**Delivery Point:** {result['deliveryPointCd']}")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
         
         # Update stats
         st.session_state.processing_stats['total_processed'] += 1
-        if result['overall_valid']:
+        if is_valid:
             st.session_state.processing_stats['successful'] += 1
         else:
             st.session_state.processing_stats['failed'] += 1
@@ -696,7 +868,7 @@ class ValidatorApp:
         # Main tabs
         name_tab, address_tab, monitoring_tab = st.tabs([
             "🤖 Enhanced Name Validation",
-            "🏠 Address Validation", 
+            "🏠 Enhanced Address Validation", 
             "📊 Monitoring & Analytics"
         ])
         
