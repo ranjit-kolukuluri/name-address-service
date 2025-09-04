@@ -1,6 +1,6 @@
 # ui/app.py
 """
-Updated Streamlit UI for name and address validation with new format
+Updated Streamlit UI for name and address validation with dictionary integration
 """
 
 import streamlit as st
@@ -22,7 +22,7 @@ from utils.logger import logger
 
 
 class ValidatorApp:
-    """Enhanced Streamlit application with new format support"""
+    """Enhanced Streamlit application with dictionary integration"""
     
     def __init__(self):
         self.service = ValidationService()
@@ -35,7 +35,10 @@ class ValidatorApp:
             st.session_state.processing_stats = {
                 'total_processed': 0,
                 'successful': 0,
-                'failed': 0
+                'failed': 0,
+                'deterministic': 0,
+                'hybrid': 0,
+                'ai_fallback': 0
             }
     
     def apply_styling(self):
@@ -84,6 +87,33 @@ class ValidatorApp:
             margin: 0.5rem;
         }
         
+        .method-deterministic {
+            background: #10b981;
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .method-hybrid {
+            background: #f59e0b;
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .method-ai {
+            background: #8b5cf6;
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
         .result-card {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
@@ -106,6 +136,14 @@ class ValidatorApp:
             color: #dc2626;
             font-weight: bold;
         }
+        
+        .dict-status {
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
         </style>
         """, unsafe_allow_html=True)
     
@@ -113,21 +151,25 @@ class ValidatorApp:
         """Render enhanced application header"""
         name_available = self.service.is_name_validation_available()
         address_available = self.service.is_address_validation_available()
+        dict_status = self.service.dictionary_status
         
         st.markdown('''
         <div class="header">
             <div class="title">Name & Address Validator v2.0</div>
-            <div class="subtitle">Enhanced AI-powered validation with intelligent detection</div>
+            <div class="subtitle">Enhanced with Dictionary Integration + AI Fallback</div>
         </div>
         ''', unsafe_allow_html=True)
         
-        # Status indicators
+        # Status indicators with dictionary info
         col1, col2, col3 = st.columns([1, 1, 1])
         
         with col2:
             status_html = ""
             if name_available:
-                status_html += '<span class="status-success">✓ AI Name Validation Ready</span>'
+                if dict_status:
+                    status_html += '<span class="status-success">✓ Dictionary + AI Validation Ready</span>'
+                else:
+                    status_html += '<span class="status-warning">⚠ AI-Only Mode (No Dictionaries)</span>'
             else:
                 status_html += '<span class="status-warning">⚠ Name Service Unavailable</span>'
             
@@ -137,10 +179,30 @@ class ValidatorApp:
                 status_html += '<span class="status-warning">⚠ USPS API Not Configured</span>'
             
             st.markdown(f'<div style="text-align: center;">{status_html}</div>', unsafe_allow_html=True)
+        
+        # Dictionary status info
+        if dict_status:
+            stats = self.service._get_dictionary_statistics()
+            st.markdown(f'''
+            <div class="dict-status">
+                <strong>📚 Dictionary Status:</strong> Loaded<br>
+                <strong>First Names:</strong> {stats.get('first_names_count', 0):,} | 
+                <strong>Surnames:</strong> {stats.get('surnames_count', 0):,} | 
+                <strong>Gender Mappings:</strong> {stats.get('gender_mappings_count', 0):,}
+            </div>
+            ''', unsafe_allow_html=True)
+        else:
+            st.markdown(f'''
+            <div class="dict-status">
+                <strong>📚 Dictionary Status:</strong> Not Available<br>
+                <strong>Validation Mode:</strong> AI Pattern Matching Only<br>
+                <strong>Note:</strong> Place dictionary CSV files in <code>/Users/t93uyz8/Documents/name_dictionaries</code> for enhanced accuracy
+            </div>
+            ''', unsafe_allow_html=True)
     
     def render_name_validation(self):
         """Render enhanced name validation interface"""
-        st.markdown("## 👤 Enhanced Name Validation with AI")
+        st.markdown("## 👤 Enhanced Name Validation")
         
         # Single name validation
         with st.expander("Single Name Validation", expanded=True):
@@ -165,7 +227,7 @@ class ValidatorApp:
                 submitted = st.form_submit_button("🔍 Validate Name", type="primary")
                 
                 if submitted and full_name:
-                    with st.spinner("Processing with AI..."):
+                    with st.spinner("Processing with enhanced validation..."):
                         # Create name record
                         name_record = {
                             'uniqueID': '1',
@@ -175,21 +237,34 @@ class ValidatorApp:
                             'parseInd': parse_ind
                         }
                         
-                        # Validate using new format
+                        # Validate using enhanced format
                         result = self.service.validate_names({'names': [name_record]})
                         
                         if result['names']:
                             self._display_enhanced_name_result(result['names'][0])
+                            
+                            # Show processing stats if available
+                            if 'processing_stats' in result:
+                                stats = result['processing_stats']
+                                with st.expander("📊 Processing Details"):
+                                    col_stats1, col_stats2, col_stats3 = st.columns(3)
+                                    with col_stats1:
+                                        st.metric("Processing Time", f"{stats['processing_time_ms']}ms")
+                                    with col_stats2:
+                                        st.metric("Dictionary Available", "Yes" if stats['dictionary_available'] else "No")
+                                    with col_stats3:
+                                        method_used = result['names'][0].get('validationMethod', 'unknown')
+                                        st.metric("Method Used", method_used.replace('_', ' ').title())
         
         # Enhanced API Testing
-        with st.expander("Enhanced API Testing (v2.0 Format)"):
-            st.markdown("### Test New API Format")
+        with st.expander("Enhanced API Testing"):
+            st.markdown("### Test Enhanced API Format")
             
             # Get example payload
             default_payload = self.service.get_example_payload()
             
             json_input = st.text_area(
-                "JSON Payload (v2.0 Format):",
+                "JSON Payload (Enhanced Format):",
                 value=json.dumps(default_payload, indent=2),
                 height=300
             )
@@ -198,14 +273,33 @@ class ValidatorApp:
                 try:
                     payload = json.loads(json_input)
                     
-                    with st.spinner("Processing with AI enhancements..."):
+                    with st.spinner("Processing with dictionary lookup + AI fallback..."):
                         result = self.service.validate_names(payload)
                         
                         st.success("✅ API request processed successfully")
                         
-                        # Display results in a nice format
+                        # Display results with method information
                         for name_result in result['names']:
                             self._display_enhanced_name_result(name_result)
+                        
+                        # Show processing statistics
+                        if 'processing_stats' in result:
+                            stats = result['processing_stats']
+                            with st.expander("📈 Processing Statistics"):
+                                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                                
+                                with col_stat1:
+                                    st.metric("Total Processed", stats['total_processed'])
+                                
+                                with col_stat2:
+                                    methods = stats.get('validation_methods', {})
+                                    st.metric("Dictionary", methods.get('deterministic', 0))
+                                
+                                with col_stat3:
+                                    st.metric("Hybrid", methods.get('hybrid', 0))
+                                
+                                with col_stat4:
+                                    st.metric("AI Fallback", methods.get('ai_fallback', 0))
                         
                         # Show raw JSON for developers
                         with st.expander("Raw JSON Response"):
@@ -229,13 +323,27 @@ class ValidatorApp:
                     st.write("Preview:")
                     st.dataframe(df.head())
                     
-                    if st.button("🔄 Process with AI Enhancement", type="primary"):
-                        with st.spinner("Processing CSV with AI..."):
+                    if st.button("🔄 Process with Enhanced Validation", type="primary"):
+                        with st.spinner("Processing CSV with dictionary lookup + AI fallback..."):
                             result = self.service.process_csv_names(df)
                             
                             if result['success']:
                                 st.success(f"✅ Processed {result['processed_records']} names")
                                 st.write(f"Success rate: {result['success_rate']:.1%}")
+                                
+                                # Show method breakdown
+                                if 'validation_method_breakdown' in result:
+                                    method_breakdown = result['validation_method_breakdown']
+                                    col_method1, col_method2, col_method3 = st.columns(3)
+                                    
+                                    with col_method1:
+                                        st.metric("Dictionary Validated", method_breakdown.get('deterministic', 0))
+                                    
+                                    with col_method2:
+                                        st.metric("Hybrid Validation", method_breakdown.get('hybrid', 0))
+                                    
+                                    with col_method3:
+                                        st.metric("AI Fallback", method_breakdown.get('ai_fallback', 0))
                                 
                                 if result['results']:
                                     # Create enhanced results DataFrame
@@ -309,7 +417,7 @@ class ValidatorApp:
                 if not all([first_name, last_name, street_address, city, state, zip_code]):
                     st.error("❌ All fields are required")
                 else:
-                    with st.spinner("Validating with USPS..."):
+                    with st.spinner("Validating with enhanced name validation + USPS..."):
                         result = self.service.validate_complete_record(
                             first_name, last_name, street_address, city, state, zip_code
                         )
@@ -322,10 +430,10 @@ class ValidatorApp:
         # Service status
         status = self.service.get_service_status()
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            name_status = "✅ Enhanced AI Ready" if status['name_validation_available'] else "❌ Unavailable"
+            name_status = "✅ Enhanced Ready" if status['name_validation_available'] else "❌ Unavailable"
             st.metric("Name Service", name_status)
         
         with col2:
@@ -333,48 +441,51 @@ class ValidatorApp:
             st.metric("Address Service", addr_status)
         
         with col3:
+            dict_status = "✅ Loaded" if status['dictionary_status'] else "❌ Not Available"
+            st.metric("Dictionaries", dict_status)
+        
+        with col4:
             st.metric("API Version", f"v{status['api_version']}")
         
-        # Processing stats
+        # Enhanced processing stats
         stats = st.session_state.processing_stats
         
         st.markdown("### Processing Statistics")
-        col4, col5, col6, col7 = st.columns(4)
-        
-        with col4:
-            st.metric("Total Processed", stats['total_processed'])
+        col5, col6, col7, col8, col9 = st.columns(5)
         
         with col5:
-            st.metric("Successful", stats['successful'])
+            st.metric("Total Processed", stats['total_processed'])
         
         with col6:
-            st.metric("Failed", stats['failed'])
+            st.metric("Successful", stats['successful'])
         
         with col7:
-            success_rate = (stats['successful'] / stats['total_processed'] * 100) if stats['total_processed'] > 0 else 0
-            st.metric("Success Rate", f"{success_rate:.1f}%")
-        
-        # Feature showcase
-        st.markdown("### AI Enhancement Features")
-        col8, col9 = st.columns(2)
+            st.metric("Dictionary", stats['deterministic'])
         
         with col8:
-            st.markdown("""
-            **🤖 Intelligent Detection:**
-            - Smart gender prediction from names
-            - Organization vs Individual classification
-            - Nickname standardization (Bill → William)
-            - Prefix/suffix extraction
-            """)
+            st.metric("Hybrid", stats['hybrid'])
         
         with col9:
-            st.markdown("""
-            **📊 Enhanced Accuracy:**
-            - Multi-factor confidence scoring
-            - Dictionary-based validation
-            - Pattern recognition algorithms
-            - Real-time error detection
-            """)
+            st.metric("AI Fallback", stats['ai_fallback'])
+        
+        # Dictionary information
+        if status['dictionary_status'] and 'dictionary_statistics' in status:
+            st.markdown("### Dictionary Information")
+            dict_stats = status['dictionary_statistics']
+            
+            col10, col11, col12 = st.columns(3)
+            
+            with col10:
+                st.metric("First Names", f"{dict_stats.get('first_names_count', 0):,}")
+                st.metric("Surnames", f"{dict_stats.get('surnames_count', 0):,}")
+            
+            with col11:
+                st.metric("Gender Mappings", f"{dict_stats.get('gender_mappings_count', 0):,}")
+                st.metric("Nickname Mappings", f"{dict_stats.get('nickname_mappings_count', 0):,}")
+            
+            with col12:
+                st.metric("Business Words", f"{dict_stats.get('business_words_count', 0):,}")
+                st.metric("Company Suffixes", f"{dict_stats.get('company_suffixes_count', 0):,}")
         
         # Recent logs
         recent_logs = logger.get_recent_logs(10)
@@ -399,7 +510,10 @@ class ValidatorApp:
             st.session_state.processing_stats = {
                 'total_processed': 0,
                 'successful': 0,
-                'failed': 0
+                'failed': 0,
+                'deterministic': 0,
+                'hybrid': 0,
+                'ai_fallback': 0
             }
             st.session_state.validation_results = []
             logger.clear()
@@ -407,10 +521,12 @@ class ValidatorApp:
             st.rerun()
     
     def _display_enhanced_name_result(self, result: dict):
-        """Display enhanced name validation result"""
+        """Display enhanced name validation result with method information"""
         
         # Determine confidence level for styling
         confidence = float(result.get('confidenceScore', '0'))
+        validation_method = result.get('validationMethod', 'unknown')
+        
         if confidence >= 90:
             confidence_class = "confidence-high"
             confidence_icon = "🟢"
@@ -421,9 +537,20 @@ class ValidatorApp:
             confidence_class = "confidence-low"
             confidence_icon = "🔴"
         
+        # Method styling
+        if 'deterministic' in validation_method:
+            method_class = "method-deterministic"
+            method_label = "Dictionary"
+        elif 'hybrid' in validation_method:
+            method_class = "method-hybrid"
+            method_label = "Hybrid"
+        else:
+            method_class = "method-ai"
+            method_label = "AI Fallback"
+        
         st.markdown('<div class="result-card">', unsafe_allow_html=True)
         
-        # Header with confidence
+        # Header with confidence and method
         col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
@@ -435,9 +562,10 @@ class ValidatorApp:
         with col3:
             st.markdown(f"**Status:** {result['parseStatus']}")
         
-        # Confidence and error message
+        # Confidence and method information
         st.markdown(f"""
-        {confidence_icon} **Confidence:** <span class="{confidence_class}">{confidence}%</span>  
+        {confidence_icon} **Confidence:** <span class="{confidence_class}">{confidence:.2f}%</span>  
+        **Method:** <span class="{method_class}">{method_label}</span>  
         **Message:** {result['errorMessage']}
         """, unsafe_allow_html=True)
         
@@ -466,26 +594,8 @@ class ValidatorApp:
                 # Gender prediction
                 gender_display = result['outGenderCd'] if result['outGenderCd'] else 'Unknown'
                 if result['outGenderCd'] and not result['inGenderCd']:
-                    gender_display += " (AI Predicted)"
+                    gender_display += " (Predicted)"
                 st.write(f"**Gender:** {gender_display}")
-        
-        # Literal (uppercase) versions
-        if result['parseInd'] == 'Y':
-            with st.expander("📝 Literal Formats"):
-                literal_parts = []
-                if result['prefixLt']:
-                    literal_parts.append(f"Prefix: {result['prefixLt']}")
-                if result['firstNameLt']:
-                    literal_parts.append(f"First: {result['firstNameLt']}")
-                if result['middleNameLt']:
-                    literal_parts.append(f"Middle: {result['middleNameLt']}")
-                if result['lastNameLt']:
-                    literal_parts.append(f"Last: {result['lastNameLt']}")
-                if result['suffixLt']:
-                    literal_parts.append(f"Suffix: {result['suffixLt']}")
-                
-                if literal_parts:
-                    st.write(" | ".join(literal_parts))
         
         st.markdown('</div>', unsafe_allow_html=True)
         
@@ -495,6 +605,14 @@ class ValidatorApp:
             st.session_state.processing_stats['successful'] += 1
         else:
             st.session_state.processing_stats['failed'] += 1
+        
+        # Update method stats
+        if 'deterministic' in validation_method:
+            st.session_state.processing_stats['deterministic'] += 1
+        elif 'hybrid' in validation_method:
+            st.session_state.processing_stats['hybrid'] += 1
+        else:
+            st.session_state.processing_stats['ai_fallback'] += 1
     
     def _display_address_result(self, result: dict):
         """Display address validation result (unchanged)"""
@@ -517,6 +635,20 @@ class ValidatorApp:
         with col4:
             confidence = result.get('overall_confidence', 0)
             st.metric("Confidence", f"{confidence:.1%}")
+        
+        # Show validation methods used
+        validation_methods = result.get('validation_methods', {})
+        if validation_methods:
+            st.markdown("### Validation Methods Used")
+            col_method1, col_method2 = st.columns(2)
+            
+            with col_method1:
+                name_method = validation_methods.get('name_method', 'unknown').replace('_', ' ').title()
+                st.write(f"**Name Validation:** {name_method}")
+            
+            with col_method2:
+                address_method = validation_methods.get('address_method', 'unknown').replace('_', ' ').title()
+                st.write(f"**Address Validation:** {address_method}")
         
         # USPS results
         if address_result.get('success') and address_result.get('standardized'):
@@ -549,7 +681,7 @@ class ValidatorApp:
         """Main application entry point"""
         # Configure page
         st.set_page_config(
-            page_title="Name & Address Validator v2.0",
+            page_title="Enhanced Name & Address Validator v2.0",
             page_icon="🤖",
             layout="wide",
             initial_sidebar_state="collapsed"

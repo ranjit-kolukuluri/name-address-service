@@ -1,6 +1,6 @@
 # api/main.py
 """
-Updated FastAPI server for name and address validation with new format
+Updated FastAPI server for name and address validation with dictionary integration
 """
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -26,8 +26,8 @@ from utils.config import Config
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Name & Address Validation API",
-    description="Professional validation service with USPS integration and AI-based detection",
+    title="Enhanced Name & Address Validation API",
+    description="Professional validation service with dictionary integration and AI fallback",
     version=Config.API_VERSION,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -42,37 +42,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize validation service
+# Initialize enhanced validation service
 validation_service = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize validation service on startup"""
+    """Initialize enhanced validation service on startup"""
     global validation_service
     
-    logger.info("Starting Name & Address Validation API v2.0", "API")
+    logger.info("Starting Enhanced Name & Address Validation API v2.0", "API")
     
     try:
         validation_service = ValidationService()
-        logger.info("Validation service initialized successfully", "API")
+        dict_status = "with dictionaries" if validation_service.dictionary_status else "AI-only mode"
+        logger.info(f"Enhanced validation service initialized {dict_status}", "API")
     except Exception as e:
         logger.error(f"Failed to initialize validation service: {e}", "API")
 
-# Health check endpoint
+# Enhanced health check endpoint
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Enhanced health check endpoint"""
+    dict_status = "loaded" if validation_service and validation_service.dictionary_status else "not_available"
+    
     return {
         "status": "healthy",
         "timestamp": "2024-01-01T00:00:00",
         "version": Config.API_VERSION,
-        "format": "v2.0 - Enhanced with AI detection"
+        "format": "v2.0 - Enhanced with Dictionary Integration",
+        "dictionary_status": dict_status,
+        "validation_mode": "Dictionary + AI" if dict_status == "loaded" else "AI Only"
     }
 
-# Service status endpoint
+# Enhanced service status endpoint
 @app.get("/status", response_model=ServiceStatus)
 async def service_status():
-    """Get detailed service status"""
+    """Get enhanced service status with dictionary information"""
     if not validation_service:
         raise HTTPException(
             status_code=503,
@@ -82,52 +87,17 @@ async def service_status():
     status = validation_service.get_service_status()
     return ServiceStatus(**status)
 
-# Main name validation endpoint (new format)
+# Main enhanced name validation endpoint
 @app.post("/api/v2/validate-names", response_model=NameValidationResponse)
-async def validate_names_v2(request: NameValidationRequest):
+async def validate_names_v2_enhanced(request: NameValidationRequest):
     """
-    Validate names using the new enhanced format with AI detection
+    Enhanced name validation with dictionary lookup and AI fallback
     
-    Input:
-    {
-      "names": [
-        {
-          "uniqueID": "1",
-          "fullName": "Bill Smith",
-          "genderCd": "M",
-          "partyTypeCd": "I", 
-          "parseInd": "Y"
-        }
-      ]
-    }
-    
-    Output:
-    {
-      "names": [
-        {
-          "uniqueID": "1",
-          "partyTypeCd": "I",
-          "prefix": "MR",
-          "firstName": "Bill",
-          "firstNameStd": "William",
-          "middleName": null,
-          "lastName": "Smith",
-          "suffix": null,
-          "fullName": "Bill Smith",
-          "inGenderCd": "M",
-          "outGenderCd": "M",
-          "prefixLt": null,
-          "firstNameLt": "BILL",
-          "middleNameLt": null,
-          "lastNameLt": "SMITH", 
-          "suffixLt": null,
-          "parseInd": "Y",
-          "confidenceScore": "99.9995",
-          "parseStatus": "Parsed",
-          "errorMessage": "Probably Valid"
-        }
-      ]
-    }
+    Returns additional fields:
+    - validationMethod: "deterministic", "hybrid", or "ai_fallback"
+    - Dictionary-based confidence scoring
+    - Enhanced organization detection
+    - Improved gender prediction
     """
     
     if not validation_service:
@@ -140,20 +110,34 @@ async def validate_names_v2(request: NameValidationRequest):
         # Convert Pydantic models to dict format
         names_data = {"names": [name.dict() for name in request.names]}
         
-        # Process validation
+        # Process with enhanced validation
         result = validation_service.validate_names(names_data)
         
-        # Convert to response model
-        response = NameValidationResponse(**result)
+        # Log processing statistics
+        if 'processing_stats' in result:
+            stats = result['processing_stats']
+            methods = stats.get('validation_methods', {})
+            det_count = methods.get('deterministic', 0)
+            hybrid_count = methods.get('hybrid', 0)
+            ai_count = methods.get('ai_fallback', 0)
+            
+            logger.info(
+                f"Enhanced API v2 processed {len(request.names)} records - "
+                f"Dictionary: {det_count}, Hybrid: {hybrid_count}, AI: {ai_count}",
+                "API"
+            )
         
-        logger.info(f"API v2 call processed: {len(request.names)} records", "API")
+        # Convert to response model (exclude processing_stats from response)
+        response_data = {"names": result['names']}
+        response = NameValidationResponse(**response_data)
+        
         return response
         
     except Exception as e:
-        logger.error(f"API v2 validation error: {e}", "API")
+        logger.error(f"Enhanced API v2 validation error: {e}", "API")
         raise HTTPException(
             status_code=500,
-            detail=f"Validation processing failed: {str(e)}"
+            detail=f"Enhanced validation processing failed: {str(e)}"
         )
 
 # Legacy endpoint (v1 compatibility)
@@ -185,19 +169,22 @@ async def validate_names_v1_legacy(request: dict):
             }
             new_names.append(new_name)
         
-        # Process with new service
+        # Process with enhanced service
         result = validation_service.validate_names({'names': new_names})
         
         # Convert back to old format for response
         old_format_results = []
         for new_result in result['names']:
+            # Determine validation status based on enhanced result
+            validation_status = 'valid' if new_result['parseStatus'] in ['Parsed', 'Not Parsed', 'Organization'] else 'invalid'
+            
             old_result = {
                 'uniqueid': new_result['uniqueID'],
                 'name': new_result['fullName'],
                 'gender': new_result['outGenderCd'],
                 'party_type': new_result['partyTypeCd'],
                 'parse_indicator': new_result['parseInd'],
-                'validation_status': 'valid' if new_result['parseStatus'] in ['Parsed', 'Not Parsed'] else 'invalid',
+                'validation_status': validation_status,
                 'confidence_score': float(new_result['confidenceScore']) / 100,
                 'parsed_components': {
                     'first_name': new_result['firstName'] or '',
@@ -211,16 +198,21 @@ async def validate_names_v1_legacy(request: dict):
                     'party_type_prediction': new_result['partyTypeCd']
                 },
                 'errors': [] if new_result['parseStatus'] != 'Error' else [new_result['errorMessage']],
-                'warnings': []
+                'warnings': [] if new_result['parseStatus'] != 'Warning' else [new_result['errorMessage']],
+                'validation_method': new_result.get('validationMethod', 'unknown')  # Enhanced info
             }
             old_format_results.append(old_result)
+        
+        # Calculate success metrics
+        successful_count = len([r for r in old_format_results if r['validation_status'] == 'valid'])
         
         return {
             'status': 'success',
             'processed_count': len(old_format_results),
-            'successful_count': len([r for r in old_format_results if r['validation_status'] == 'valid']),
+            'successful_count': successful_count,
+            'dictionary_enabled': validation_service.dictionary_status,  # Enhanced info
             'results': old_format_results,
-            'processing_time_ms': 0,
+            'processing_time_ms': result.get('processing_stats', {}).get('processing_time_ms', 0),
             'timestamp': '2024-01-01T00:00:00'
         }
         
@@ -263,7 +255,7 @@ async def validate_address(address: AddressRecord):
             detail=f"Address validation failed: {str(e)}"
         )
 
-# Complete record validation endpoint
+# Enhanced complete record validation endpoint
 @app.post("/api/v2/validate-complete")
 async def validate_complete_record(
     first_name: str,
@@ -274,7 +266,7 @@ async def validate_complete_record(
     zip_code: str
 ):
     """
-    Validate a complete record (name + address)
+    Enhanced complete record validation (name + address)
     """
     
     if not validation_service:
@@ -291,17 +283,17 @@ async def validate_complete_record(
         return result
         
     except Exception as e:
-        logger.error(f"Complete validation error: {e}", "API")
+        logger.error(f"Enhanced complete validation error: {e}", "API")
         raise HTTPException(
             status_code=500,
-            detail=f"Complete validation failed: {str(e)}"
+            detail=f"Enhanced complete validation failed: {str(e)}"
         )
 
-# CSV upload endpoint
+# Enhanced CSV upload endpoint
 @app.post("/api/v2/upload-csv")
-async def upload_csv(file: UploadFile = File(...)):
+async def upload_csv_enhanced(file: UploadFile = File(...)):
     """
-    Upload CSV file for batch name processing with new format
+    Enhanced CSV upload with validation method tracking
     """
     
     if not validation_service:
@@ -319,24 +311,59 @@ async def upload_csv(file: UploadFile = File(...)):
     try:
         # Read CSV
         df = pd.read_csv(file.file)
-        logger.info(f"CSV uploaded: {file.filename} ({len(df)} rows)", "API")
+        logger.info(f"Enhanced CSV uploaded: {file.filename} ({len(df)} rows)", "API")
         
-        # Process names with new format
+        # Process names with enhanced validation
         result = validation_service.process_csv_names(df)
         
         return result
         
     except Exception as e:
-        logger.error(f"CSV processing error: {e}", "API")
+        logger.error(f"Enhanced CSV processing error: {e}", "API")
         raise HTTPException(
             status_code=500,
-            detail=f"CSV processing failed: {str(e)}"
+            detail=f"Enhanced CSV processing failed: {str(e)}"
         )
 
-# Example payload endpoint
+# Dictionary status endpoint
+@app.get("/api/v2/dictionary-status")
+async def get_dictionary_status():
+    """Get detailed dictionary loading status"""
+    if not validation_service:
+        raise HTTPException(
+            status_code=503,
+            detail="Validation service not available"
+        )
+    
+    validator = validation_service.name_validator
+    
+    return {
+        "dictionaries_loaded": validator.dictionary_loaded,
+        "dictionary_path": validator.dictionary_path,
+        "available_dictionaries": {
+            "first_names": len(validator.first_names_set) > 0,
+            "surnames": len(validator.surnames_set) > 0,
+            "gender_mappings": len(validator.name_to_gender) > 0,
+            "nicknames": len(validator.nickname_to_standard) > 0,
+            "business_words": len(validator.business_words_set) > 0,
+            "company_suffixes": len(validator.company_suffixes_set) > 0,
+            "name_prefixes": len(validator.name_prefixes_set) > 0
+        },
+        "lookup_counts": {
+            "first_names": len(validator.first_names_set),
+            "surnames": len(validator.surnames_set),
+            "gender_mappings": len(validator.name_to_gender),
+            "nickname_mappings": len(validator.nickname_to_standard),
+            "business_words": len(validator.business_words_set),
+            "company_suffixes": len(validator.company_suffixes_set),
+            "name_prefixes": len(validator.name_prefixes_set)
+        }
+    }
+
+# Enhanced example endpoint
 @app.get("/api/v2/example")
-async def get_example_payload_v2():
-    """Get example API payload for testing with new format"""
+async def get_enhanced_example_payload():
+    """Get enhanced example API payload for testing"""
     if not validation_service:
         raise HTTPException(
             status_code=503,
@@ -375,21 +402,32 @@ async def get_example_payload_v1():
         ]
     }
 
-# API Documentation endpoint
+# Enhanced API Documentation endpoint
 @app.get("/api/v2/documentation")
-async def get_api_documentation():
-    """Get API documentation and format information"""
+async def get_enhanced_api_documentation():
+    """Get enhanced API documentation with dictionary integration details"""
+    dict_status = "loaded" if validation_service and validation_service.dictionary_status else "not_available"
+    
     return {
         "version": "2.0.0",
-        "description": "Enhanced Name & Address Validation API with AI-based detection",
+        "description": "Enhanced Name & Address Validation API with dictionary integration and AI fallback",
+        "dictionary_status": dict_status,
         "features": [
-            "Intelligent gender prediction using AI when not provided",
+            "Dictionary-based deterministic validation for maximum accuracy",
+            "AI fallback for names not in dictionaries", 
+            "Intelligent gender prediction with dictionary support",
             "Smart organization vs individual detection",
-            "Enhanced name parsing with prefix/suffix extraction",
-            "Name standardization (e.g., Bill -> William)",
-            "High-confidence scoring algorithm",
-            "USPS address validation integration"
+            "Enhanced name parsing with comprehensive prefix/suffix extraction",
+            "Nickname standardization using dictionary mappings",
+            "Multi-factor confidence scoring with method transparency",
+            "USPS address validation integration",
+            "Validation method tracking (deterministic/hybrid/ai_fallback)"
         ],
+        "validation_methods": {
+            "deterministic": "Uses dictionary lookup for exact matches - highest accuracy",
+            "hybrid": "Combines dictionary lookup with AI prediction",
+            "ai_fallback": "AI-based pattern matching when dictionaries can't help"
+        },
         "input_format": {
             "endpoint": "/api/v2/validate-names",
             "method": "POST",
@@ -420,24 +458,19 @@ async def get_api_documentation():
                         "fullName": "string - original input",
                         "inGenderCd": "string - input gender",
                         "outGenderCd": "string - predicted/validated gender",
-                        "prefixLt": "string - uppercase prefix",
-                        "firstNameLt": "string - uppercase first name",
-                        "middleNameLt": "string - uppercase middle name",
-                        "lastNameLt": "string - uppercase last name",
-                        "suffixLt": "string - uppercase suffix",
                         "parseInd": "string - Y/N",
                         "confidenceScore": "string - confidence percentage",
                         "parseStatus": "string - Parsed/Error/Warning",
-                        "errorMessage": "string - status message"
+                        "errorMessage": "string - status message",
+                        "validationMethod": "string - deterministic/hybrid/ai_fallback"
                     }
                 ]
             }
         },
-        "ai_features": {
-            "gender_prediction": "Uses pattern analysis and name dictionaries",
-            "organization_detection": "Intelligent keyword and pattern matching",
-            "name_standardization": "Common nickname to formal name mapping",
-            "confidence_scoring": "Multi-factor confidence calculation"
+        "confidence_scoring": {
+            "deterministic": "90-99% (dictionary-based validation)",
+            "hybrid": "70-90% (partial dictionary match + AI)",
+            "ai_fallback": "50-80% (AI pattern matching only)"
         }
     }
 
