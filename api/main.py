@@ -1,14 +1,17 @@
-# api/main.py
+# api/main.py - SIMPLIFIED VERSION WITH CORE FUNCTIONALITY ONLY
 """
-Updated FastAPI server for name and address validation with dictionary integration
+Simplified FastAPI server for name and address validation - Core functionality only
 """
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from typing import List
 import pandas as pd
+import time
 import sys
 from pathlib import Path
+from datetime import datetime
 
 # Add parent directory to path
 current_file = Path(__file__).resolve()
@@ -26,8 +29,8 @@ from utils.config import Config
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Enhanced Name & Address Validation API",
-    description="Professional validation service with dictionary integration and AI fallback",
+    title="Name & Address Validation API",
+    description="Core validation service with name validation and address CSV processing",
     version=Config.API_VERSION,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -42,78 +45,354 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize enhanced validation service
+# Initialize validation service
 validation_service = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize enhanced validation service on startup"""
+    """Initialize validation service on startup"""
     global validation_service
     
-    logger.info("Starting Enhanced Name & Address Validation API v2.0", "API")
+    logger.info("Starting Name & Address Validation API", "API")
     
     try:
         validation_service = ValidationService()
         dict_status = "with dictionaries" if validation_service.dictionary_status else "AI-only mode"
-        logger.info(f"Enhanced validation service initialized {dict_status}", "API")
+        logger.info(f"Validation service initialized {dict_status}", "API")
     except Exception as e:
         logger.error(f"Failed to initialize validation service: {e}", "API")
 
-# Enhanced health check endpoint
+# =============================================================================
+# CORE ENDPOINTS - ESSENTIAL FUNCTIONALITY ONLY
+# =============================================================================
+
+# Health check
 @app.get("/health")
 async def health_check():
-    """Enhanced health check endpoint"""
-    dict_status = "loaded" if validation_service and validation_service.dictionary_status else "not_available"
-    
+    """Simple health check"""
     return {
         "status": "healthy",
-        "timestamp": "2024-01-01T00:00:00",
+        "timestamp": datetime.now().isoformat(),
         "version": Config.API_VERSION,
-        "format": "v2.0 - Enhanced with Dictionary Integration",
-        "dictionary_status": dict_status,
-        "validation_mode": "Dictionary + AI" if dict_status == "loaded" else "AI Only"
+        "services": {
+            "name_validation": validation_service.is_name_validation_available() if validation_service else False,
+            "address_validation": validation_service.is_address_validation_available() if validation_service else False,
+            "dictionary_loaded": validation_service.dictionary_status if validation_service else False
+        }
     }
 
-# Enhanced service status endpoint
+# Service status
 @app.get("/status", response_model=ServiceStatus)
 async def service_status():
-    """Get enhanced service status with dictionary information"""
+    """Get service status"""
     if not validation_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Validation service not initialized"
-        )
+        raise HTTPException(status_code=503, detail="Validation service not initialized")
     
     status = validation_service.get_service_status()
     return ServiceStatus(**status)
 
-# Main enhanced name validation endpoint
-@app.post("/api/v2/validate-names", response_model=NameValidationResponse)
-async def validate_names_v2_enhanced(request: NameValidationRequest):
+# =============================================================================
+# 1. SINGLE ADDRESS VALIDATION
+# =============================================================================
+
+@app.post("/api/validate-address", response_model=AddressValidationResult)
+async def validate_single_address(address: AddressRecord):
     """
-    Enhanced name validation with dictionary lookup and AI fallback
+    Validate a single address using USPS API
     
-    Returns additional fields:
-    - validationMethod: "deterministic", "hybrid", or "ai_fallback"
-    - Dictionary-based confidence scoring
-    - Enhanced organization detection
-    - Improved gender prediction
+    Core endpoint for single address validation with USPS standardization
     """
     
     if not validation_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Validation service not available"
-        )
+        raise HTTPException(status_code=503, detail="Validation service not available")
+    
+    if not validation_service.is_address_validation_available():
+        raise HTTPException(status_code=503, detail="USPS API not configured")
     
     try:
-        # Convert Pydantic models to dict format
-        names_data = {"names": [name.dict() for name in request.names]}
+        result = validation_service.validate_single_address(address.dict())
+        return AddressValidationResult(**result)
         
-        # Process with enhanced validation
+    except Exception as e:
+        logger.error(f"Address validation error: {e}", "API")
+        raise HTTPException(status_code=500, detail=f"Address validation failed: {str(e)}")
+
+# =============================================================================
+# 2. MULTIPLE CSV UPLOAD WITH AUTO-STANDARDIZATION
+# =============================================================================
+
+@app.post("/api/upload-address-csv")
+async def upload_address_csv_files(files: List[UploadFile] = File(...)):
+    """
+    Upload multiple CSV files with automatic format standardization and USPS validation
+    
+    Core endpoint for batch address processing:
+    1. Accepts multiple CSV files (any address format)
+    2. Auto-detects column formats (address, street_address, line1, etc.)
+    3. Standardizes to USPS format automatically
+    4. Validates all addresses with USPS API
+    5. Returns combined results with source tracking
+    """
+    
+    if not validation_service:
+        raise HTTPException(status_code=503, detail="Validation service not available")
+    
+    # Validate inputs
+    if len(files) > 10:  # Reasonable limit
+        raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
+    
+    for file in files:
+        if not file.filename.endswith('.csv'):
+            raise HTTPException(status_code=400, detail=f"File {file.filename} must be CSV format")
+    
+    try:
+        start_time = time.time()
+        combined_results = []
+        file_summaries = []
+        total_records = 0
+        total_successful = 0
+        
+        logger.info(f"Processing {len(files)} CSV files", "API")
+        
+        for file_index, file in enumerate(files):
+            try:
+                # Read CSV
+                df = pd.read_csv(file.file)
+                
+                if df.empty:
+                    file_summaries.append({
+                        "filename": file.filename,
+                        "status": "skipped", 
+                        "reason": "Empty file",
+                        "records": 0
+                    })
+                    continue
+                
+                logger.info(f"Processing {file.filename}: {len(df)} rows", "API")
+                
+                # Process with automatic standardization and USPS validation
+                result = validation_service.process_csv_addresses(df)
+                
+                if result['success']:
+                    # Add file tracking to each result
+                    for i, address_result in enumerate(result['results']):
+                        address_result.update({
+                            'source_file': file.filename,
+                            'file_row_number': i + 1,
+                            'global_row_number': len(combined_results) + 1,
+                            'auto_standardized': True
+                        })
+                    
+                    combined_results.extend(result['results'])
+                    total_records += result['total_records']
+                    total_successful += result['successful_validations']
+                    
+                    file_summaries.append({
+                        "filename": file.filename,
+                        "status": "completed",
+                        "total_records": result['total_records'],
+                        "successful_validations": result['successful_validations'],
+                        "success_rate": f"{result['success_rate']:.1%}",
+                        "auto_standardized": True
+                    })
+                    
+                else:
+                    file_summaries.append({
+                        "filename": file.filename,
+                        "status": "failed",
+                        "reason": result.get('error', 'Processing failed'),
+                        "records": len(df)
+                    })
+                    
+            except Exception as file_error:
+                logger.error(f"Error processing {file.filename}: {file_error}", "API")
+                file_summaries.append({
+                    "filename": file.filename,
+                    "status": "error",
+                    "reason": str(file_error),
+                    "records": 0
+                })
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        # Return comprehensive results
+        return {
+            "status": "completed",
+            "timestamp": datetime.now().isoformat(),
+            "processing_summary": {
+                "total_files": len(files),
+                "total_records": total_records,
+                "successful_validations": total_successful,
+                "success_rate": total_successful / total_records if total_records > 0 else 0,
+                "processing_time_ms": processing_time,
+                "auto_standardization": "enabled",
+                "usps_validation": validation_service.is_address_validation_available()
+            },
+            "file_summaries": file_summaries,
+            "results": combined_results,
+            "usage_info": {
+                "auto_standardization": "All CSV formats automatically detected and standardized",
+                "supported_formats": [
+                    "address, city, state, zip",
+                    "street_address, city, state_code, zip_code",
+                    "line1, city, stateCd, zipCd",
+                    "Plus many other variations"
+                ]
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"CSV processing error: {e}", "API")
+        raise HTTPException(status_code=500, detail=f"CSV processing failed: {str(e)}")
+
+# =============================================================================
+# 3. NAME VALIDATION (EXISTING FUNCTIONALITY)
+# =============================================================================
+
+@app.post("/api/upload-names-csv")
+async def upload_names_csv_files(files: List[UploadFile] = File(...)):
+    """
+    Upload multiple CSV files for name validation with dictionary lookup and AI fallback
+    
+    Core endpoint for batch name processing:
+    1. Accepts multiple CSV files (any name format)
+    2. Auto-detects name columns (name, full_name, fullName, etc.)
+    3. Validates with dictionary + AI fallback
+    4. Returns combined results with validation methods
+    """
+    
+    if not validation_service:
+        raise HTTPException(status_code=503, detail="Validation service not available")
+    
+    # Validate inputs
+    if len(files) > 10:  # Reasonable limit
+        raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
+    
+    for file in files:
+        if not file.filename.endswith('.csv'):
+            raise HTTPException(status_code=400, detail=f"File {file.filename} must be CSV format")
+    
+    try:
+        start_time = time.time()
+        combined_results = []
+        file_summaries = []
+        total_records = 0
+        total_successful = 0
+        method_stats = {'deterministic': 0, 'hybrid': 0, 'ai_fallback': 0}
+        
+        logger.info(f"Processing {len(files)} name CSV files", "API")
+        
+        for file_index, file in enumerate(files):
+            try:
+                # Read CSV
+                df = pd.read_csv(file.file)
+                
+                if df.empty:
+                    file_summaries.append({
+                        "filename": file.filename,
+                        "status": "skipped", 
+                        "reason": "Empty file",
+                        "records": 0
+                    })
+                    continue
+                
+                logger.info(f"Processing {file.filename}: {len(df)} rows", "API")
+                
+                # Process with enhanced name validation
+                result = validation_service.process_csv_names(df)
+                
+                if result['success']:
+                    # Add file tracking to each result
+                    for i, name_result in enumerate(result['results']):
+                        name_result.update({
+                            'source_file': file.filename,
+                            'file_row_number': i + 1,
+                            'global_row_number': len(combined_results) + 1
+                        })
+                    
+                    combined_results.extend(result['results'])
+                    total_records += result['total_records']
+                    total_successful += result['successful_validations']
+                    
+                    # Aggregate method stats
+                    if 'validation_method_breakdown' in result:
+                        breakdown = result['validation_method_breakdown']
+                        method_stats['deterministic'] += breakdown.get('deterministic', 0)
+                        method_stats['hybrid'] += breakdown.get('hybrid', 0)
+                        method_stats['ai_fallback'] += breakdown.get('ai_fallback', 0)
+                    
+                    file_summaries.append({
+                        "filename": file.filename,
+                        "status": "completed",
+                        "total_records": result['total_records'],
+                        "successful_validations": result['successful_validations'],
+                        "success_rate": f"{result['success_rate']:.1%}",
+                        "dictionary_available": result.get('dictionary_available', False)
+                    })
+                    
+                else:
+                    file_summaries.append({
+                        "filename": file.filename,
+                        "status": "failed",
+                        "reason": result.get('error', 'Processing failed'),
+                        "records": len(df)
+                    })
+                    
+            except Exception as file_error:
+                logger.error(f"Error processing {file.filename}: {file_error}", "API")
+                file_summaries.append({
+                    "filename": file.filename,
+                    "status": "error",
+                    "reason": str(file_error),
+                    "records": 0
+                })
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        # Return comprehensive results
+        return {
+            "status": "completed",
+            "timestamp": datetime.now().isoformat(),
+            "processing_summary": {
+                "total_files": len(files),
+                "total_records": total_records,
+                "successful_validations": total_successful,
+                "success_rate": total_successful / total_records if total_records > 0 else 0,
+                "processing_time_ms": processing_time,
+                "validation_methods": method_stats,
+                "dictionary_available": validation_service.dictionary_status
+            },
+            "file_summaries": file_summaries,
+            "results": combined_results,
+            "validation_info": {
+                "dictionary_validation": "Enhanced accuracy with dictionary lookup",
+                "ai_fallback": "Pattern matching for names not in dictionaries",
+                "supported_formats": [
+                    "name, first_name, last_name columns",
+                    "full_name, fullName, Name columns",
+                    "Plus automatic gender and organization detection"
+                ]
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Name CSV processing error: {e}", "API")
+        raise HTTPException(status_code=500, detail=f"Name CSV processing failed: {str(e)}")
+
+
+@app.post("/api/validate-names", response_model=NameValidationResponse)
+async def validate_names(request: NameValidationRequest):
+    """
+    Enhanced name validation with dictionary lookup and AI fallback
+    """
+    
+    if not validation_service:
+        raise HTTPException(status_code=503, detail="Validation service not available")
+    
+    try:
+        names_data = {"names": [name.dict() for name in request.names]}
         result = validation_service.validate_names(names_data)
         
-        # Log processing statistics
         if 'processing_stats' in result:
             stats = result['processing_stats']
             methods = stats.get('validation_methods', {})
@@ -122,358 +401,133 @@ async def validate_names_v2_enhanced(request: NameValidationRequest):
             ai_count = methods.get('ai_fallback', 0)
             
             logger.info(
-                f"Enhanced API v2 processed {len(request.names)} records - "
+                f"Name validation processed {len(request.names)} records - "
                 f"Dictionary: {det_count}, Hybrid: {hybrid_count}, AI: {ai_count}",
                 "API"
             )
         
-        # Convert to response model (exclude processing_stats from response)
         response_data = {"names": result['names']}
-        response = NameValidationResponse(**response_data)
-        
-        return response
+        return NameValidationResponse(**response_data)
         
     except Exception as e:
-        logger.error(f"Enhanced API v2 validation error: {e}", "API")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Enhanced validation processing failed: {str(e)}"
-        )
+        logger.error(f"Name validation error: {e}", "API")
+        raise HTTPException(status_code=500, detail=f"Name validation failed: {str(e)}")
 
-# Legacy endpoint (v1 compatibility)
-@app.post("/api/v1/validate-names")
-async def validate_names_v1_legacy(request: dict):
-    """
-    Legacy v1 endpoint for backward compatibility
-    Converts old format to new format internally
-    """
-    
-    if not validation_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Validation service not available"
-        )
-    
-    try:
-        # Convert old format to new format
-        old_records = request.get('records', [])
-        new_names = []
-        
-        for record in old_records:
-            new_name = {
-                'uniqueID': record.get('uniqueid', ''),
-                'fullName': record.get('name', ''),
-                'genderCd': record.get('gender', ''),
-                'partyTypeCd': record.get('party_type', ''),
-                'parseInd': record.get('parseInd', 'Y')
-            }
-            new_names.append(new_name)
-        
-        # Process with enhanced service
-        result = validation_service.validate_names({'names': new_names})
-        
-        # Convert back to old format for response
-        old_format_results = []
-        for new_result in result['names']:
-            # Determine validation status based on enhanced result
-            validation_status = 'valid' if new_result['parseStatus'] in ['Parsed', 'Not Parsed', 'Organization'] else 'invalid'
-            
-            old_result = {
-                'uniqueid': new_result['uniqueID'],
-                'name': new_result['fullName'],
-                'gender': new_result['outGenderCd'],
-                'party_type': new_result['partyTypeCd'],
-                'parse_indicator': new_result['parseInd'],
-                'validation_status': validation_status,
-                'confidence_score': float(new_result['confidenceScore']) / 100,
-                'parsed_components': {
-                    'first_name': new_result['firstName'] or '',
-                    'last_name': new_result['lastName'] or '',
-                    'middle_name': new_result['middleName'] or '',
-                    'organization_name': new_result['fullName'] if new_result['partyTypeCd'] == 'O' else ''
+# =============================================================================
+# UTILITY ENDPOINTS
+# =============================================================================
+
+@app.get("/api/example-address")
+async def get_example_address():
+    """Get example address for testing single address validation"""
+    return {
+        "example_request": {
+            "guid": "test1",
+            "line1": "1394 N SAINT LOUIS",
+            "line2": None,
+            "city": "BATESVILLE",
+            "stateCd": "AR",
+            "zipCd": "72501",
+            "countryCd": "US"
+        },
+        "usage": "POST /api/validate-address"
+    }
+
+@app.get("/api/example-names")
+async def get_example_names():
+    """Get example names for testing name validation"""
+    return {
+        "example_request": {
+            "names": [
+                {
+                    "uniqueID": "1",
+                    "fullName": "Dr. William Smith Jr.",
+                    "genderCd": "",
+                    "partyTypeCd": "I",
+                    "parseInd": "Y"
                 },
-                'suggestions': {
-                    'name_suggestions': [],
-                    'gender_prediction': new_result['outGenderCd'],
-                    'party_type_prediction': new_result['partyTypeCd']
-                },
-                'errors': [] if new_result['parseStatus'] != 'Error' else [new_result['errorMessage']],
-                'warnings': [] if new_result['parseStatus'] != 'Warning' else [new_result['errorMessage']],
-                'validation_method': new_result.get('validationMethod', 'unknown')  # Enhanced info
-            }
-            old_format_results.append(old_result)
-        
-        # Calculate success metrics
-        successful_count = len([r for r in old_format_results if r['validation_status'] == 'valid'])
-        
-        return {
-            'status': 'success',
-            'processed_count': len(old_format_results),
-            'successful_count': successful_count,
-            'dictionary_enabled': validation_service.dictionary_status,  # Enhanced info
-            'results': old_format_results,
-            'processing_time_ms': result.get('processing_stats', {}).get('processing_time_ms', 0),
-            'timestamp': '2024-01-01T00:00:00'
-        }
-        
-    except Exception as e:
-        logger.error(f"API v1 legacy error: {e}", "API")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Legacy validation failed: {str(e)}"
-        )
-
-# Single address validation endpoint
-@app.post("/api/v2/validate-address", response_model=AddressValidationResult)
-async def validate_address(address: AddressRecord):
-    """
-    Validate a single address using USPS API
-    """
-    
-    if not validation_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Validation service not available"
-        )
-    
-    if not validation_service.is_address_validation_available():
-        raise HTTPException(
-            status_code=503,
-            detail="USPS API not configured"
-        )
-    
-    try:
-        # Validate the address
-        result = validation_service.validate_single_address(address.dict())
-        
-        return AddressValidationResult(**result)
-        
-    except Exception as e:
-        logger.error(f"Address validation error: {e}", "API")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Address validation failed: {str(e)}"
-        )
-
-# Enhanced complete record validation endpoint
-@app.post("/api/v2/validate-complete")
-async def validate_complete_record(
-    first_name: str,
-    last_name: str,
-    street_address: str,
-    city: str,
-    state: str,
-    zip_code: str
-):
-    """
-    Enhanced complete record validation (name + address)
-    """
-    
-    if not validation_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Validation service not available"
-        )
-    
-    try:
-        result = validation_service.validate_complete_record(
-            first_name, last_name, street_address, city, state, zip_code
-        )
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Enhanced complete validation error: {e}", "API")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Enhanced complete validation failed: {str(e)}"
-        )
-
-# Enhanced CSV upload endpoint
-@app.post("/api/v2/upload-csv")
-async def upload_csv_enhanced(file: UploadFile = File(...)):
-    """
-    Enhanced CSV upload with validation method tracking
-    """
-    
-    if not validation_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Validation service not available"
-        )
-    
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(
-            status_code=400,
-            detail="File must be CSV format"
-        )
-    
-    try:
-        # Read CSV
-        df = pd.read_csv(file.file)
-        logger.info(f"Enhanced CSV uploaded: {file.filename} ({len(df)} rows)", "API")
-        
-        # Process names with enhanced validation
-        result = validation_service.process_csv_names(df)
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Enhanced CSV processing error: {e}", "API")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Enhanced CSV processing failed: {str(e)}"
-        )
-
-# Dictionary status endpoint
-@app.get("/api/v2/dictionary-status")
-async def get_dictionary_status():
-    """Get detailed dictionary loading status"""
-    if not validation_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Validation service not available"
-        )
-    
-    validator = validation_service.name_validator
-    
-    return {
-        "dictionaries_loaded": validator.dictionary_loaded,
-        "dictionary_path": validator.dictionary_path,
-        "available_dictionaries": {
-            "first_names": len(validator.first_names_set) > 0,
-            "surnames": len(validator.surnames_set) > 0,
-            "gender_mappings": len(validator.name_to_gender) > 0,
-            "nicknames": len(validator.nickname_to_standard) > 0,
-            "business_words": len(validator.business_words_set) > 0,
-            "company_suffixes": len(validator.company_suffixes_set) > 0,
-            "name_prefixes": len(validator.name_prefixes_set) > 0
+                {
+                    "uniqueID": "2",
+                    "fullName": "TechCorp Solutions LLC",
+                    "genderCd": "",
+                    "partyTypeCd": "O",
+                    "parseInd": "N"
+                }
+            ]
         },
-        "lookup_counts": {
-            "first_names": len(validator.first_names_set),
-            "surnames": len(validator.surnames_set),
-            "gender_mappings": len(validator.name_to_gender),
-            "nickname_mappings": len(validator.nickname_to_standard),
-            "business_words": len(validator.business_words_set),
-            "company_suffixes": len(validator.company_suffixes_set),
-            "name_prefixes": len(validator.name_prefixes_set)
-        }
+        "usage": "POST /api/validate-names"
     }
 
-# Enhanced example endpoint
-@app.get("/api/v2/example")
-async def get_enhanced_example_payload():
-    """Get enhanced example API payload for testing"""
-    if not validation_service:
-        raise HTTPException(
-            status_code=503,
-            detail="Validation service not available"
-        )
+@app.get("/api/sample-csv")
+async def get_sample_csv():
+    """Get sample CSV data for testing multiple file upload"""
     
-    return validation_service.get_example_payload()
-
-# Legacy example endpoint
-@app.get("/api/v1/example")
-async def get_example_payload_v1():
-    """Get example API payload for testing (legacy format)"""
-    return {
-        "records": [
-            {
-                "uniqueid": "001",
-                "name": "John Michael Smith",
-                "gender": "",
-                "party_type": "I",
-                "parseInd": "Y"
-            },
-            {
-                "uniqueid": "002",
-                "name": "TechCorp Solutions LLC",
-                "gender": "",
-                "party_type": "O",
-                "parseInd": "N"
-            },
-            {
-                "uniqueid": "003",
-                "name": "Mary Johnson-Williams",
-                "gender": "F",
-                "party_type": "",
-                "parseInd": "Y"
-            }
-        ]
-    }
-
-# Enhanced API Documentation endpoint
-@app.get("/api/v2/documentation")
-async def get_enhanced_api_documentation():
-    """Get enhanced API documentation with dictionary integration details"""
-    dict_status = "loaded" if validation_service and validation_service.dictionary_status else "not_available"
+    sample_data = [
+        {"id": "1", "address": "1394 N SAINT LOUIS", "city": "BATESVILLE", "state": "AR", "zip": "72501"},
+        {"id": "2", "street_address": "123 Main Street", "apartment": "Apt 4B", "city": "New York", "state_code": "NY", "zip_code": "10001"},
+        {"id": "3", "line1": "456 Oak Avenue", "city": "Los Angeles", "stateCd": "CA", "zipCd": "90210"},
+        {"id": "4", "address_line_1": "789 Pine Street", "municipality": "Chicago", "province": "IL", "postal_code": "60601"}
+    ]
+    
+    # Convert to CSV string
+    import io
+    import csv
+    
+    output = io.StringIO()
+    if sample_data:
+        fieldnames = sample_data[0].keys()
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(sample_data)
+        csv_content = output.getvalue()
+    else:
+        csv_content = ""
     
     return {
-        "version": "2.0.0",
-        "description": "Enhanced Name & Address Validation API with dictionary integration and AI fallback",
-        "dictionary_status": dict_status,
-        "features": [
-            "Dictionary-based deterministic validation for maximum accuracy",
-            "AI fallback for names not in dictionaries", 
-            "Intelligent gender prediction with dictionary support",
-            "Smart organization vs individual detection",
-            "Enhanced name parsing with comprehensive prefix/suffix extraction",
-            "Nickname standardization using dictionary mappings",
-            "Multi-factor confidence scoring with method transparency",
-            "USPS address validation integration",
-            "Validation method tracking (deterministic/hybrid/ai_fallback)"
-        ],
-        "validation_methods": {
-            "deterministic": "Uses dictionary lookup for exact matches - highest accuracy",
-            "hybrid": "Combines dictionary lookup with AI prediction",
-            "ai_fallback": "AI-based pattern matching when dictionaries can't help"
-        },
-        "input_format": {
-            "endpoint": "/api/v2/validate-names",
-            "method": "POST",
-            "structure": {
-                "names": [
-                    {
-                        "uniqueID": "string - unique identifier",
-                        "fullName": "string - full name to validate",
-                        "genderCd": "string - optional gender code (M/F)",
-                        "partyTypeCd": "string - optional party type (I/O)",
-                        "parseInd": "string - parse indicator (Y/N)"
-                    }
-                ]
-            }
-        },
-        "output_format": {
-            "structure": {
-                "names": [
-                    {
-                        "uniqueID": "string",
-                        "partyTypeCd": "string - I or O",
-                        "prefix": "string - Mr, Mrs, Dr, etc.",
-                        "firstName": "string",
-                        "firstNameStd": "string - standardized first name",
-                        "middleName": "string",
-                        "lastName": "string", 
-                        "suffix": "string - Jr, Sr, III, etc.",
-                        "fullName": "string - original input",
-                        "inGenderCd": "string - input gender",
-                        "outGenderCd": "string - predicted/validated gender",
-                        "parseInd": "string - Y/N",
-                        "confidenceScore": "string - confidence percentage",
-                        "parseStatus": "string - Parsed/Error/Warning",
-                        "errorMessage": "string - status message",
-                        "validationMethod": "string - deterministic/hybrid/ai_fallback"
-                    }
-                ]
-            }
-        },
-        "confidence_scoring": {
-            "deterministic": "90-99% (dictionary-based validation)",
-            "hybrid": "70-90% (partial dictionary match + AI)",
-            "ai_fallback": "50-80% (AI pattern matching only)"
-        }
+        "description": "Sample CSV with mixed address formats for testing",
+        "csv_content": csv_content,
+        "usage": "Save as .csv file and upload to /api/upload-address-csv"
     }
+
+# =============================================================================
+# SERVER STARTUP
+# =============================================================================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import socket
+    
+    def is_port_in_use(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('localhost', port))
+                return False
+            except socket.error:
+                return True
+    
+    def find_available_port(start_port=8000):
+        port = start_port
+        while is_port_in_use(port):
+            port += 1
+            if port > 8100:
+                raise Exception("No available ports found")
+        return port
+    
+    try:
+        port = 8000
+        if is_port_in_use(port):
+            port = find_available_port(8001)
+            print(f"⚠️  Port 8000 in use, using port {port}")
+        
+        print(f"🌐 API starting on port {port}")
+        print(f"📚 Documentation: http://localhost:{port}/docs")
+        print(f"🔍 Health check: http://localhost:{port}/health")
+        print(f"📋 Core endpoints:")
+        print(f"   • POST /api/validate-address - Single address validation")
+        print(f"   • POST /api/upload-address-csv - Multiple CSV upload") 
+        print(f"   • POST /api/validate-names - Name validation")
+        
+        uvicorn.run(app, host="0.0.0.0", port=port)
+        
+    except Exception as e:
+        print(f"❌ Failed to start server: {e}")

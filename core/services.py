@@ -238,9 +238,69 @@ class ValidationService:
         }
     
     def validate_single_address(self, address_data: Dict) -> Dict:
-        """Validate a single address (legacy method)"""
+        """Validate a single address using enhanced format"""
         logger.info(f"Validating single address", "SERVICE")
-        return self.address_validator.validate_address(address_data)
+        
+        if not self.is_address_validation_available():
+            # Create error result in enhanced format
+            error_result = {
+                'guid': address_data.get('guid', ''),
+                'line1': address_data.get('line1'),
+                'line2': address_data.get('line2'),
+                'line3': address_data.get('line3'),
+                'line4': address_data.get('line4'),
+                'line5': address_data.get('line5'),
+                'deliveryAddressLine1': None,
+                'deliveryAddressLine2': None,
+                'deliveryAddressLine3': None,
+                'deliveryAddressLine4': None,
+                'deliveryAddressLine5': None,
+                'city': address_data.get('city'),
+                'stateCd': address_data.get('stateCd'),
+                'zipCd': address_data.get('zipCd'),
+                'zipCd4': None,
+                'zipCdComplete': address_data.get('zipCd'),
+                'countyName': None,
+                'countyCd': None,
+                'countryName': None,
+                'countryCd': address_data.get('countryCd', 'US'),
+                'mailabilityScore': '0',
+                'mailabilityScoreDesc': None,
+                'matchCode': 'E1',
+                'matchCodeDesc': None,
+                'CASSErrorCode': None,
+                'barcode': None,
+                'carrierRoute': None,
+                'congressionalDistrict': None,
+                'deliveryPointCd': None,
+                'zipMoveReturnCd': None,
+                'CASSERPStatus': None,
+                'residentialDeliveryIndicator': None,
+                'latitude': None,
+                'longitude': None,
+                'errorMsg': 'USPS API not configured',
+                'completeAddress': None,
+                'inLine1': address_data.get('line1'),
+                'inLine2': address_data.get('line2'),
+                'inLine3': address_data.get('line3'),
+                'inLine4': address_data.get('line4'),
+                'inLine5': address_data.get('line5'),
+                'inLine6': address_data.get('city'),
+                'inLine7': address_data.get('stateCd'),
+                'inLine8': address_data.get('zipCd'),
+                'inCountryCd': address_data.get('countryCd', 'US'),
+                'inVerificationInd': address_data.get('verificationInd', 'Y'),
+                'inOnlyOneAddrInd': address_data.get('onlyOneAddrInd', 'N'),
+                'RecipientLine1': None,
+                'RecipientLine2': None,
+                'ResidueSuperfluous1': None,
+                'ResidueSuperfluous2': None,
+                'ResultPercentage': '0.00'
+            }
+            return error_result
+        
+        # ✅ This calls the ENHANCED method that returns the correct format
+        return self.address_validator.validate_single_address(address_data)
     
     def validate_complete_record(self, first_name: str, last_name: str,
                                 street_address: str, city: str, state: str, zip_code: str) -> Dict:
@@ -521,7 +581,263 @@ class ValidationService:
                 }
             ]
         }
+    # Add these methods to core/services.py in the ValidationService class
+
+def process_csv_addresses_enhanced(self, df: pd.DataFrame, manual_mappings: Dict = None) -> Dict:
+    """Enhanced CSV processing with better error handling and format detection"""
     
+    logger.info(f"Processing address CSV with {len(df)} rows using enhanced validation", "SERVICE")
+    
+    try:
+        # Validate DataFrame
+        if df.empty:
+            return {
+                'success': False,
+                'error': 'CSV file is empty'
+            }
+        
+        # Use manual mappings if provided, otherwise auto-detect
+        if manual_mappings:
+            logger.info("Using manual column mappings", "SERVICE")
+            standardized_addresses = self._apply_manual_mappings(df, manual_mappings)
+        else:
+            logger.info("Using auto-detection for column mappings", "SERVICE")
+            standardized_addresses = self.address_validator.standardize_csv_to_address_format(df)
+        
+        if not standardized_addresses:
+            return {
+                'success': False,
+                'error': 'No valid addresses found after standardization. Please check column mappings.'
+            }
+        
+        logger.info(f"Standardized {len(standardized_addresses)} addresses", "SERVICE")
+        
+        # Validate addresses using batch processing
+        validation_result = self.validate_addresses({'addresses': standardized_addresses})
+        results = validation_result['addresses']
+        processing_stats = validation_result.get('processing_stats', {})
+        
+        # Enhanced result processing
+        csv_results = []
+        successful = 0
+        error_summary = {}
+        
+        for i, result in enumerate(results):
+            is_valid = result.get('errorMsg') is None and result.get('mailabilityScore') == '1'
+            
+            # Create enhanced CSV result
+            csv_result = {
+                'row_number': i + 1,
+                'guid': result['guid'],
+                
+                # Input data
+                'input_line1': result.get('inLine1', ''),
+                'input_line2': result.get('inLine2', ''),
+                'input_city': result.get('inLine6', ''),
+                'input_state': result.get('inLine7', ''),
+                'input_zip': result.get('inLine8', ''),
+                
+                # USPS validated data
+                'validated_line1': result.get('deliveryAddressLine1', ''),
+                'validated_line2': result.get('deliveryAddressLine2', ''),
+                'validated_city': result.get('city', ''),
+                'validated_state': result.get('stateCd', ''),
+                'validated_zip': result.get('zipCdComplete', ''),
+                'validated_zip_plus4': result.get('zipCd4', ''),
+                
+                # Geographic and postal info
+                'county_name': result.get('countyName', ''),
+                'county_code': result.get('countyCd', ''),
+                'carrier_route': result.get('carrierRoute', ''),
+                'congressional_district': result.get('congressionalDistrict', ''),
+                'delivery_point': result.get('deliveryPointCd', ''),
+                
+                # Validation results
+                'mailability_score': result.get('mailabilityScore', '0'),
+                'match_code': result.get('matchCode', ''),
+                'result_percentage': result.get('ResultPercentage', '0.00'),
+                'is_residential': result.get('residentialDeliveryIndicator') == 'Y',
+                'is_valid': is_valid,
+                'is_deliverable': is_valid,
+                
+                # Error info
+                'error_message': result.get('errorMsg', ''),
+                'validation_notes': self._get_validation_notes(result)
+            }
+            
+            csv_results.append(csv_result)
+            
+            if is_valid:
+                successful += 1
+            else:
+                # Track error types
+                error_type = self._categorize_error(result.get('errorMsg', 'Unknown error'))
+                error_summary[error_type] = error_summary.get(error_type, 0) + 1
+        
+        # Enhanced statistics
+        enhanced_stats = {
+            'total_records': len(df),
+            'processed_records': len(csv_results),
+            'successful_validations': successful,
+            'failed_validations': len(csv_results) - successful,
+            'success_rate': successful / len(csv_results) if csv_results else 0,
+            'usps_configured': self.is_address_validation_available(),
+            'processing_stats': processing_stats,
+            'error_breakdown': error_summary,
+            'data_quality': {
+                'complete_addresses': len([r for r in csv_results if r['input_line1'] and r['input_city'] and r['input_state'] and r['input_zip']]),
+                'missing_data_count': len([r for r in csv_results if not (r['input_line1'] and r['input_city'] and r['input_state'] and r['input_zip'])]),
+                'standardization_improvements': len([r for r in csv_results if r['is_valid'] and (r['input_line1'] != r['validated_line1'] or r['input_city'] != r['validated_city'])])
+            }
+        }
+        
+        return {
+            'success': True,
+            'total_records': enhanced_stats['total_records'],
+            'processed_records': enhanced_stats['processed_records'],
+            'successful_validations': enhanced_stats['successful_validations'],
+            'success_rate': enhanced_stats['success_rate'],
+            'usps_configured': enhanced_stats['usps_configured'],
+            'processing_stats': enhanced_stats['processing_stats'],
+            'enhanced_statistics': enhanced_stats,
+            'results': csv_results
+        }
+        
+    except Exception as e:
+        logger.error(f"Enhanced CSV processing error: {e}", "SERVICE")
+        return {
+            'success': False,
+            'error': f'CSV processing failed: {str(e)}',
+            'details': 'Check CSV format and ensure address columns are present'
+        }
+
+def _apply_manual_mappings(self, df: pd.DataFrame, mappings: Dict) -> List[Dict]:
+    """Apply manual column mappings to standardize CSV format"""
+    
+    standardized_addresses = []
+    
+    for idx, row in df.iterrows():
+        address = {
+            'guid': str(idx + 1),
+            'line1': str(row.get(mappings.get('line1', ''), '')).strip() or None,
+            'line2': str(row.get(mappings.get('line2', ''), '')).strip() or None,
+            'line3': None,
+            'line4': None,
+            'line5': None,
+            'city': str(row.get(mappings.get('city', ''), '')).strip(),
+            'stateCd': str(row.get(mappings.get('stateCd', ''), '')).strip().upper(),
+            'zipCd': str(row.get(mappings.get('zipCd', ''), '')).strip(),
+            'countryCd': str(row.get(mappings.get('countryCd', ''), 'US')).strip().upper(),
+            'verificationInd': 'Y',
+            'onlyOneAddrInd': 'N'
+        }
+        
+        # Clean up empty strings to appropriate values
+        for key in ['line1', 'line2', 'city', 'stateCd', 'zipCd']:
+            if address[key] == '' or address[key] == 'nan':
+                if key in ['city', 'stateCd', 'zipCd']:
+                    address[key] = ''  # Required fields should be empty string, not None
+                else:
+                    address[key] = None
+        
+        standardized_addresses.append(address)
+    
+    return standardized_addresses
+
+def _get_validation_notes(self, result: Dict) -> str:
+    """Generate human-readable validation notes"""
+    notes = []
+    
+    # Mailability scoring
+    mailability = result.get('mailabilityScore', '0')
+    if mailability == '1':
+        notes.append("USPS Deliverable")
+    elif mailability == '0':
+        notes.append("Not Deliverable")
+    
+    # Match code interpretation
+    match_code = result.get('matchCode', '')
+    if match_code == 'A1':
+        notes.append("Exact Match")
+    elif match_code == 'B1':
+        notes.append("Default Match")
+    elif match_code.startswith('C'):
+        notes.append("Partial Match")
+    elif match_code.startswith('E'):
+        notes.append("Error")
+    
+    # Address type
+    if result.get('residentialDeliveryIndicator') == 'Y':
+        notes.append("Residential")
+    elif result.get('residentialDeliveryIndicator') == 'N':
+        notes.append("Business")
+    
+    # Result percentage
+    result_pct = float(result.get('ResultPercentage', '0'))
+    if result_pct >= 90:
+        notes.append("High Confidence")
+    elif result_pct >= 70:
+        notes.append("Medium Confidence")
+    elif result_pct > 0:
+        notes.append("Low Confidence")
+    
+    return "; ".join(notes) if notes else "No additional notes"
+
+def _categorize_error(self, error_msg: str) -> str:
+    """Categorize error messages for summary"""
+    if not error_msg:
+        return "No Error"
+    
+    error_lower = error_msg.lower()
+    
+    if 'not found' in error_lower or '404' in error_lower:
+        return "Address Not Found"
+    elif 'invalid' in error_lower or '400' in error_lower:
+        return "Invalid Format"
+    elif 'missing' in error_lower or 'required' in error_lower:
+        return "Missing Data"
+    elif 'api' in error_lower or 'service' in error_lower:
+        return "Service Error"
+    elif 'timeout' in error_lower:
+        return "Timeout"
+    else:
+        return "Other Error"
+
+def get_csv_format_examples(self) -> Dict:
+    """Get examples of supported CSV formats"""
+    return {
+        "standard_format": {
+            "description": "Standard address validation format",
+            "columns": ["id", "line1", "city", "stateCd", "zipCd"],
+            "example_data": [
+                {"id": "1", "line1": "123 Main St", "city": "New York", "stateCd": "NY", "zipCd": "10001"},
+                {"id": "2", "line1": "456 Oak Ave", "city": "Los Angeles", "stateCd": "CA", "zipCd": "90210"}
+            ]
+        },
+        "common_format": {
+            "description": "Common CSV export format",
+            "columns": ["address", "city", "state", "zip"],
+            "example_data": [
+                {"address": "789 Pine St", "city": "Chicago", "state": "IL", "zip": "60601"},
+                {"address": "321 Elm Dr", "city": "Houston", "state": "TX", "zip": "77001"}
+            ]
+        },
+        "extended_format": {
+            "description": "Extended format with apartment/suite info",
+            "columns": ["street_address", "apartment", "city", "state_code", "zip_code"],
+            "example_data": [
+                {"street_address": "555 Maple Ave", "apartment": "Apt 4B", "city": "Miami", "state_code": "FL", "zip_code": "33101"},
+                {"street_address": "777 Cedar Ln", "apartment": "", "city": "Seattle", "state_code": "WA", "zip_code": "98101"}
+            ]
+        },
+        "auto_mapping_supported": {
+            "line1_variations": ["line1", "address_line_1", "address1", "street_address", "street", "addr1", "address"],
+            "line2_variations": ["line2", "address_line_2", "address2", "apartment", "apt", "suite", "unit", "addr2"],
+            "city_variations": ["city", "town", "municipality"],
+            "state_variations": ["state_cd", "state", "state_code", "st", "province"],
+            "zip_variations": ["zip_cd", "zip", "zip_code", "postal_code", "zipcode", "postcode"]
+        }
+    }
     def get_example_address_payload(self) -> Dict:
         """Get example address payload for testing"""
         return {
