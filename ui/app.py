@@ -1,13 +1,13 @@
 # ui/app.py
 """
-Complete Professional Streamlit UI for name and address validation with enhanced functionality
+Complete Professional Streamlit UI for name and address validation with enhanced 3-bucket functionality
 """
 
 import streamlit as st
 import pandas as pd
 import json
 import time
-import re
+import re  # Added for enhanced address categorization
 from datetime import datetime
 import sys
 from pathlib import Path
@@ -23,7 +23,7 @@ from utils.logger import logger
 
 
 class ValidatorApp:
-    """Complete Professional Streamlit application with all validation functionality"""
+    """Complete Professional Streamlit application with enhanced 3-bucket address validation"""
     
     def __init__(self):
         self.service = ValidationService()
@@ -522,14 +522,14 @@ class ValidatorApp:
                     st.error(f"❌ Error reading file: {str(e)}")
     
     def render_address_validation(self):
-        """Render professional address validation interface with pre-validation toggle"""
-        st.markdown("## 🏠 Address Validation")
+        """Render professional address validation interface with enhanced 3-bucket categorization"""
+        st.markdown("## 🏠 Enhanced Address Validation")
         
         # Professional status bar
         self._render_address_status_bar()
         
         # Create tabs for different validation types
-        single_tab, csv_tab = st.tabs(["📍 Single Address", "📊 Batch CSV Processing"])
+        single_tab, csv_tab = st.tabs(["📍 Single Address", "📊 Enhanced Batch Processing"])
         
         # =========================================================================
         # TAB 1: SINGLE ADDRESS VALIDATION
@@ -539,7 +539,7 @@ class ValidatorApp:
             self._render_single_address_validation()
         
         # =========================================================================
-        # TAB 2: PROFESSIONAL BATCH CSV PROCESSING
+        # TAB 2: ENHANCED 3-BUCKET BATCH CSV PROCESSING
         # =========================================================================
         
         with csv_tab:
@@ -628,17 +628,17 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             st.markdown("</div>", unsafe_allow_html=True)
     
     def _render_professional_csv_processing(self):
-        """Render professional CSV processing with pre-validation toggle"""
-        st.markdown("### 📊 Professional Batch Processing")
+        """Render professional CSV processing with enhanced 3-bucket categorization"""
+        st.markdown("### 📊 Enhanced 3-Bucket Processing")
         
         # Professional info panel
         with st.container():
             st.markdown("""
             <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); 
                         padding: 1.5rem; border-radius: 12px; border-left: 4px solid #3b82f6;">
-                <h4 style="margin: 0; color: #1e40af;">🚀 Intelligent Processing Pipeline</h4>
+                <h4 style="margin: 0; color: #1e40af;">🚀 Intelligent 3-Bucket Processing Pipeline</h4>
                 <p style="margin: 0.5rem 0 0 0; color: #1e40af;">
-                    ✅ Auto-detects any CSV format  •  ✅ Pre-validates data quality  •  ✅ USPS batch verification
+                    🇺🇸 US Addresses → USPS Validation  •  🌍 International → Identified & Categorized  •  ❌ Invalid → Error Analysis
                 </p>
             </div>
             """, unsafe_allow_html=True)
@@ -649,68 +649,93 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             "Select multiple CSV files with address data",
             type=['csv'],
             accept_multiple_files=True,
-            key="professional_csv_upload",
-            help="Supports any CSV format - columns will be auto-detected"
+            key="enhanced_csv_upload",
+            help="Supports any CSV format - addresses will be automatically categorized"
         )
         
         if uploaded_files:
-            st.success(f"📄 **{len(uploaded_files)} file(s) uploaded** - Ready for processing")
+            st.success(f"📄 **{len(uploaded_files)} file(s) uploaded** - Ready for intelligent categorization")
             
-            # Process files for pre-validation
-            with st.spinner("🔍 Analyzing uploaded files..."):
+            # Process files for enhanced categorization
+            with st.spinner("🔍 Analyzing and categorizing addresses..."):
                 file_analysis = self._analyze_uploaded_files(uploaded_files)
             
             if file_analysis['valid_files']:
-                # Pre-validation toggle section
-                st.markdown("#### 🔍 Data Quality Pre-Analysis")
+                # Enhanced categorization display
+                st.markdown("#### 🎯 Address Categorization Results")
                 
-                # Toggle buttons for viewing valid/invalid addresses
-                col_toggle1, col_toggle2, col_toggle3 = st.columns([1, 1, 2])
+                # Toggle buttons for viewing different categories
+                col_toggle1, col_toggle2, col_toggle3, col_toggle4 = st.columns([1, 1, 1, 1])
                 
                 with col_toggle1:
-                    show_valid = st.toggle("✅ Show Valid Addresses", value=True, key="show_valid")
+                    show_us_valid = st.toggle("🇺🇸 US Valid", value=True, key="show_us_valid")
                 
                 with col_toggle2:
-                    show_invalid = st.toggle("❌ Show Invalid Addresses", value=True, key="show_invalid")
+                    show_international = st.toggle("🌍 International", value=True, key="show_international")
                 
                 with col_toggle3:
-                    st.metric(
-                        "📊 Data Quality Score", 
-                        f"{file_analysis['quality_score']:.1%}",
-                        help="Percentage of addresses that pass pre-validation"
-                    )
+                    show_invalid = st.toggle("❌ Invalid", value=True, key="show_invalid")
                 
-                # Display pre-validation results
-                self._display_pre_validation_results(file_analysis, show_valid, show_invalid)
+                with col_toggle4:
+                    overall_quality = (file_analysis['us_valid_count'] / file_analysis['total_records']) if file_analysis['total_records'] > 0 else 0
+                    st.metric("🎯 US Valid Rate", f"{overall_quality:.1%}")
                 
-                # Professional processing button
-                if file_analysis['processable_count'] > 0:
-                    st.markdown("#### 🚀 USPS Validation")
+                # Display categorized results
+                self._display_categorized_results(file_analysis, show_us_valid, show_international, show_invalid)
+                
+                # USPS Processing section
+                if file_analysis['us_valid_count'] > 0:
+                    st.markdown("#### 🚀 USPS Address Validation")
+                    
+                    # Enhanced info box about USPS processing
+                    st.markdown("""
+                    <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #10b981; margin: 1rem 0;">
+                        <strong>🎯 Ready for USPS Processing:</strong> {us_count} US addresses will be validated with USPS API<br>
+                        <strong>🌍 International Addresses:</strong> {intl_count} identified and categorized (no USPS processing needed)<br>
+                        <strong>❌ Invalid Addresses:</strong> {invalid_count} require manual review
+                    </div>
+                    """.format(
+                        us_count=file_analysis['us_valid_count'],
+                        intl_count=file_analysis['international_count'],
+                        invalid_count=file_analysis['invalid_count']
+                    ), unsafe_allow_html=True)
                     
                     col_process1, col_process2, col_process3 = st.columns([1, 2, 1])
                     with col_process2:
                         if st.button(
-                            f"🔥 Process {file_analysis['processable_count']} Addresses with USPS",
+                            f"🔥 Validate {file_analysis['us_valid_count']} US Addresses with USPS",
                             type="primary",
                             use_container_width=True,
-                            key="professional_process"
+                            key="enhanced_usps_process"
                         ):
-                            self._process_csv_with_usps(file_analysis)
+                            self._process_us_addresses_with_usps(file_analysis)
+                
                 else:
-                    st.warning("⚠️ No valid addresses found for USPS processing")
+                    st.info("ℹ️ No US valid addresses found for USPS processing. Check international and invalid categories above.")
             
             else:
                 st.error("❌ No valid CSV files found for processing")
-    
+
+    # =========================================================================
+    # ENHANCED 3-BUCKET CATEGORIZATION METHODS
+    # =========================================================================
+
     def _analyze_uploaded_files(self, uploaded_files):
-        """Analyze uploaded files and perform pre-validation"""
+        """Analyze uploaded files and categorize addresses into US Valid, International, and Invalid"""
         analysis = {
             'valid_files': [],
             'total_records': 0,
-            'valid_addresses': [],
-            'invalid_addresses': [],
-            'processable_count': 0,
-            'quality_score': 0.0,
+            'us_valid_addresses': [],        # Valid US addresses for USPS
+            'international_addresses': [],   # International addresses
+            'invalid_addresses': [],         # Invalid addresses with errors
+            'us_valid_count': 0,
+            'international_count': 0,
+            'invalid_count': 0,
+            'quality_breakdown': {
+                'us_valid_percentage': 0.0,
+                'international_percentage': 0.0,
+                'invalid_percentage': 0.0
+            },
             'file_details': []
         }
         
@@ -733,31 +758,39 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                     })
                     continue
                 
-                # Pre-validate each address
-                file_valid = []
+                # Categorize each address
+                file_us_valid = []
+                file_international = []
                 file_invalid = []
                 
                 for i, addr in enumerate(standardized_addresses):
-                    validation_result = self._pre_validate_address(addr, i + 1, file.name)
+                    categorization_result = self._categorize_address(addr, i + 1, file.name)
                     
-                    if validation_result['is_valid']:
-                        file_valid.append(validation_result)
+                    if categorization_result['category'] == 'us_valid':
+                        file_us_valid.append(categorization_result)
+                    elif categorization_result['category'] == 'international':
+                        file_international.append(categorization_result)
                     else:
-                        file_invalid.append(validation_result)
+                        file_invalid.append(categorization_result)
                 
-                analysis['valid_addresses'].extend(file_valid)
+                # Update analysis
+                analysis['us_valid_addresses'].extend(file_us_valid)
+                analysis['international_addresses'].extend(file_international)
                 analysis['invalid_addresses'].extend(file_invalid)
                 analysis['total_records'] += len(standardized_addresses)
-                analysis['processable_count'] += len(file_valid)
+                analysis['us_valid_count'] += len(file_us_valid)
+                analysis['international_count'] += len(file_international)
+                analysis['invalid_count'] += len(file_invalid)
                 
                 analysis['file_details'].append({
                     'filename': file.name,
                     'status': 'analyzed',
                     'total_rows': len(df),
                     'detected_addresses': len(standardized_addresses),
-                    'valid_addresses': len(file_valid),
+                    'us_valid_addresses': len(file_us_valid),
+                    'international_addresses': len(file_international),
                     'invalid_addresses': len(file_invalid),
-                    'quality_score': len(file_valid) / len(standardized_addresses) if standardized_addresses else 0
+                    'us_valid_percentage': len(file_us_valid) / len(standardized_addresses) if standardized_addresses else 0
                 })
                 
                 analysis['valid_files'].append(file.name)
@@ -769,77 +802,223 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                     'reason': str(e)
                 })
         
-        # Calculate overall quality score
+        # Calculate overall percentages
         if analysis['total_records'] > 0:
-            analysis['quality_score'] = analysis['processable_count'] / analysis['total_records']
+            analysis['quality_breakdown'] = {
+                'us_valid_percentage': analysis['us_valid_count'] / analysis['total_records'],
+                'international_percentage': analysis['international_count'] / analysis['total_records'],
+                'invalid_percentage': analysis['invalid_count'] / analysis['total_records']
+            }
         
         return analysis
-    
-    def _pre_validate_address(self, address_data, row_num, filename):
-        """Pre-validate address before USPS processing"""
+
+    def _categorize_address(self, address_data, row_num, filename):
+        """Categorize address into US Valid, International, or Invalid"""
         result = {
             'row_number': row_num,
             'source_file': filename,
-            'is_valid': True,
+            'category': 'invalid',  # Default to invalid
             'issues': [],
             'line1': address_data.get('line1', ''),
             'line2': address_data.get('line2', ''),
             'city': address_data.get('city', ''),
             'state': address_data.get('stateCd', ''),
             'zip': address_data.get('zipCd', ''),
+            'country': address_data.get('countryCd', 'US').upper(),
             'complete_address': '',
-            'validation_level': 'pre_check'
+            'validation_notes': ''
         }
         
-        # Check required fields
-        if not result['line1'] or not result['line1'].strip():
-            result['is_valid'] = False
-            result['issues'].append("Missing street address")
-        
-        if not result['city'] or not result['city'].strip():
-            result['is_valid'] = False
-            result['issues'].append("Missing city")
-        
-        if not result['state'] or not result['state'].strip():
-            result['is_valid'] = False
-            result['issues'].append("Missing state")
-        elif len(result['state']) != 2:
-            result['is_valid'] = False
-            result['issues'].append("Invalid state format (must be 2 letters)")
-        
-        if not result['zip'] or not result['zip'].strip():
-            result['is_valid'] = False
-            result['issues'].append("Missing ZIP code")
-        elif not re.match(r'^\d{5}(-\d{4})?$', result['zip'].strip()):
-            result['is_valid'] = False
-            result['issues'].append("Invalid ZIP format")
-        
         # Create complete address string
-        address_parts = [result['line1']]
+        address_parts = []
+        if result['line1']:
+            address_parts.append(result['line1'])
         if result['line2']:
             address_parts.append(result['line2'])
-        address_parts.append(f"{result['city']}, {result['state']} {result['zip']}")
-        result['complete_address'] = ' | '.join(address_parts)
+        if result['city']:
+            address_parts.append(result['city'])
+        if result['state']:
+            address_parts.append(result['state'])
+        if result['zip']:
+            address_parts.append(result['zip'])
+        result['complete_address'] = ', '.join(address_parts)
+        
+        # Step 1: Check if explicitly marked as international
+        if result['country'] and result['country'] != 'US' and result['country'] != 'USA':
+            result['category'] = 'international'
+            result['validation_notes'] = f"International address (Country: {result['country']})"
+            return result
+        
+        # Step 2: Check for required fields
+        missing_fields = []
+        if not result['line1'] or not result['line1'].strip():
+            missing_fields.append("street address")
+        if not result['city'] or not result['city'].strip():
+            missing_fields.append("city")
+        if not result['state'] or not result['state'].strip():
+            missing_fields.append("state")
+        if not result['zip'] or not result['zip'].strip():
+            missing_fields.append("zip code")
+        
+        if missing_fields:
+            result['category'] = 'invalid'
+            result['issues'] = [f"Missing: {', '.join(missing_fields)}"]
+            result['validation_notes'] = f"Invalid - Missing required fields: {', '.join(missing_fields)}"
+            return result
+        
+        # Step 3: Analyze ZIP code to determine if US or International
+        zip_analysis = self._analyze_zip_code(result['zip'])
+        
+        if zip_analysis['type'] == 'international':
+            result['category'] = 'international'
+            result['validation_notes'] = f"International address - {zip_analysis['reason']}"
+            return result
+        elif zip_analysis['type'] == 'invalid':
+            result['category'] = 'invalid'
+            result['issues'] = [zip_analysis['reason']]
+            result['validation_notes'] = f"Invalid - {zip_analysis['reason']}"
+            return result
+        
+        # Step 4: Validate US-specific requirements
+        us_validation = self._validate_us_address_format(result)
+        
+        if us_validation['valid']:
+            result['category'] = 'us_valid'
+            result['validation_notes'] = "Valid US address - Ready for USPS validation"
+        else:
+            result['category'] = 'invalid'
+            result['issues'] = us_validation['issues']
+            result['validation_notes'] = f"Invalid - {'; '.join(us_validation['issues'])}"
         
         return result
-    
-    def _display_pre_validation_results(self, analysis, show_valid, show_invalid):
-        """Display pre-validation results with professional styling"""
+
+    def _analyze_zip_code(self, zip_code):
+        """Analyze ZIP code to determine if it's US, International, or Invalid"""
+        if not zip_code:
+            return {'type': 'invalid', 'reason': 'Empty ZIP code'}
         
-        # Summary metrics
+        zip_clean = zip_code.strip().replace(' ', '').replace('-', '')
+        
+        # US ZIP patterns
+        us_patterns = [
+            r'^\d{5}$',           # 12345
+            r'^\d{9}$',           # 123456789 (ZIP+4 without dash)
+            r'^\d{5}-?\d{4}$'     # 12345-6789 or 123456789
+        ]
+        
+        for pattern in us_patterns:
+            if re.match(pattern, zip_code.strip()):
+                return {'type': 'us', 'reason': 'US ZIP code format'}
+        
+        # International postal code patterns
+        international_patterns = {
+            # Canada: A1A 1A1 or A1A1A1
+            r'^[A-Z]\d[A-Z]\s?\d[A-Z]\d$': 'Canadian postal code',
+            
+            # UK: Various formats like SW1A 1AA, M1 1AA, B33 8TH
+            r'^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$': 'UK postal code',
+            
+            # Germany: 5 digits
+            r'^[0-9]{5}$': 'German postal code (5 digits)',
+            
+            # Australia: 4 digits
+            r'^[0-9]{4}$': 'Australian postal code',
+            
+            # Netherlands: 4 digits + 2 letters
+            r'^[0-9]{4}\s?[A-Z]{2}$': 'Dutch postal code',
+            
+            # Sweden/Norway/Denmark: 5 digits with optional space
+            r'^[0-9]{3}\s?[0-9]{2}$': 'Nordic postal code',
+            
+            # Japan: 7 digits with dash
+            r'^\d{3}-?\d{4}$': 'Japanese postal code',
+            
+            # Brazil: 8 digits with dash
+            r'^\d{5}-?\d{3}$': 'Brazilian postal code',
+            
+            # India: 6 digits
+            r'^[0-9]{6}$': 'Indian postal code',
+            
+            # China: 6 digits
+            r'^[0-9]{6}$': 'Chinese postal code',
+            
+            # Generic international patterns
+            r'^[A-Z]{2,4}\s?[0-9]{3,5}$': 'International postal code (letters + numbers)',
+            r'^[0-9]{6,8}$': 'International postal code (6-8 digits)',
+            r'^[A-Z0-9]{5,10}$': 'International postal code (alphanumeric)'
+        }
+        
+        zip_upper = zip_code.strip().upper()
+        
+        for pattern, description in international_patterns.items():
+            if re.match(pattern, zip_upper):
+                return {'type': 'international', 'reason': description}
+        
+        # If it doesn't match any known pattern, it's likely invalid
+        return {'type': 'invalid', 'reason': 'Unrecognized postal code format'}
+
+    def _validate_us_address_format(self, address_data):
+        """Validate US-specific address format requirements"""
+        issues = []
+        
+        # Get US_STATES from the service's address validator
+        US_STATES = getattr(self.service.address_validator, 'US_STATES', {
+            'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+            'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+            'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+            'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+            'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+        })
+        
+        # Validate state code
+        state = address_data['state'].strip().upper()
+        if len(state) != 2:
+            issues.append("State must be 2-letter code")
+        elif state not in US_STATES:
+            issues.append(f"Invalid US state code: {state}")
+        
+        # Validate ZIP code format (already checked in analyze_zip_code, but double-check)
+        zip_code = address_data['zip'].strip()
+        if not re.match(r'^\d{5}(-\d{4})?$', zip_code):
+            issues.append("ZIP code must be 5 digits or ZIP+4 format")
+        
+        # Basic street address validation
+        line1 = address_data['line1'].strip()
+        if len(line1) < 3:
+            issues.append("Street address too short")
+        
+        # City validation (basic)
+        city = address_data['city'].strip()
+        if len(city) < 2:
+            issues.append("City name too short")
+        elif not re.match(r'^[A-Za-z\s\.\-\']+$', city):
+            issues.append("City contains invalid characters")
+        
+        return {
+            'valid': len(issues) == 0,
+            'issues': issues
+        }
+
+    def _display_categorized_results(self, analysis, show_us_valid, show_international, show_invalid):
+        """Display categorized address results with enhanced UI"""
+        
+        # Enhanced summary metrics
         col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
         
         with col_metric1:
-            st.metric("📄 Total Files", len(analysis['valid_files']))
+            st.metric("📊 Total Addresses", analysis['total_records'])
         
         with col_metric2:
-            st.metric("📊 Total Records", analysis['total_records'])
+            us_pct = analysis['quality_breakdown']['us_valid_percentage']
+            st.metric("🇺🇸 US Valid", analysis['us_valid_count'], delta=f"{us_pct:.1%}")
         
         with col_metric3:
-            st.metric("✅ Valid Addresses", analysis['processable_count'])
+            intl_pct = analysis['quality_breakdown']['international_percentage']
+            st.metric("🌍 International", analysis['international_count'], delta=f"{intl_pct:.1%}")
         
         with col_metric4:
-            st.metric("❌ Invalid Addresses", len(analysis['invalid_addresses']))
+            invalid_pct = analysis['quality_breakdown']['invalid_percentage']
+            st.metric("❌ Invalid", analysis['invalid_count'], delta=f"{invalid_pct:.1%}")
         
         # File-by-file breakdown
         with st.expander("📋 File Analysis Breakdown"):
@@ -847,26 +1026,57 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                 if detail['status'] == 'analyzed':
                     st.write(
                         f"📄 **{detail['filename']}**: "
-                        f"{detail['valid_addresses']}/{detail['detected_addresses']} valid "
-                        f"({detail['quality_score']:.1%} quality)"
+                        f"🇺🇸 {detail['us_valid_addresses']} US | "
+                        f"🌍 {detail['international_addresses']} Intl | "
+                        f"❌ {detail['invalid_addresses']} Invalid "
+                        f"({detail['us_valid_percentage']:.1%} US valid)"
                     )
                 else:
                     st.write(f"❌ **{detail['filename']}**: {detail.get('reason', 'Failed')}")
         
-        # Toggle-based display
-        if show_valid and analysis['valid_addresses']:
-            st.markdown("### ✅ Valid Addresses (Ready for USPS)")
-            valid_df = pd.DataFrame(analysis['valid_addresses'])
+        # Categorized displays
+        if show_us_valid and analysis['us_valid_addresses']:
+            st.markdown("### 🇺🇸 US Valid Addresses (Ready for USPS)")
+            us_valid_df = pd.DataFrame(analysis['us_valid_addresses'])
             
-            # Professional styling for valid addresses
             st.markdown("""
             <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #10b981;">
             """, unsafe_allow_html=True)
             
+            display_columns = ['source_file', 'row_number', 'complete_address', 'validation_notes']
             st.dataframe(
-                valid_df[['source_file', 'row_number', 'complete_address']],
+                us_valid_df[display_columns],
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
+                column_config={
+                    'source_file': st.column_config.TextColumn('File', width='small'),
+                    'row_number': st.column_config.NumberColumn('Row', width='small'),
+                    'complete_address': st.column_config.TextColumn('Address', width='large'),
+                    'validation_notes': st.column_config.TextColumn('Status', width='medium')
+                }
+            )
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        if show_international and analysis['international_addresses']:
+            st.markdown("### 🌍 International Addresses")
+            intl_df = pd.DataFrame(analysis['international_addresses'])
+            
+            st.markdown("""
+            <div style="background: #fffbeb; padding: 1rem; border-radius: 8px; border-left: 4px solid #f59e0b;">
+            """, unsafe_allow_html=True)
+            
+            display_columns = ['source_file', 'row_number', 'complete_address', 'validation_notes']
+            st.dataframe(
+                intl_df[display_columns],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    'source_file': st.column_config.TextColumn('File', width='small'),
+                    'row_number': st.column_config.NumberColumn('Row', width='small'),
+                    'complete_address': st.column_config.TextColumn('Address', width='large'),
+                    'validation_notes': st.column_config.TextColumn('Type', width='medium')
+                }
             )
             
             st.markdown("</div>", unsafe_allow_html=True)
@@ -875,28 +1085,35 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             st.markdown("### ❌ Invalid Addresses (Need Review)")
             invalid_df = pd.DataFrame(analysis['invalid_addresses'])
             
-            # Professional styling for invalid addresses
             st.markdown("""
             <div style="background: #fef2f2; padding: 1rem; border-radius: 8px; border-left: 4px solid #ef4444;">
             """, unsafe_allow_html=True)
             
             # Add issues column for display
             invalid_display = invalid_df.copy()
-            invalid_display['issues_text'] = invalid_display['issues'].apply(lambda x: '; '.join(x))
+            invalid_display['issues_text'] = invalid_display['issues'].apply(lambda x: '; '.join(x) if isinstance(x, list) else str(x))
             
+            display_columns = ['source_file', 'row_number', 'complete_address', 'issues_text']
             st.dataframe(
-                invalid_display[['source_file', 'row_number', 'complete_address', 'issues_text']],
+                invalid_display[display_columns],
                 use_container_width=True,
                 hide_index=True,
                 column_config={
+                    'source_file': st.column_config.TextColumn('File', width='small'),
+                    'row_number': st.column_config.NumberColumn('Row', width='small'),
+                    'complete_address': st.column_config.TextColumn('Address', width='large'),
                     'issues_text': st.column_config.TextColumn('Issues', width='medium')
                 }
             )
             
             st.markdown("</div>", unsafe_allow_html=True)
-    
-    def _process_csv_with_usps(self, analysis):
-        """Process valid addresses with USPS API"""
+
+    def _process_us_addresses_with_usps(self, analysis):
+        """Process only US valid addresses with USPS API"""
+        
+        if not analysis['us_valid_addresses']:
+            st.warning("⚠️ No US valid addresses to process with USPS")
+            return
         
         # Professional progress tracking
         progress_container = st.container()
@@ -904,52 +1121,55 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
         with progress_container:
             progress_bar = st.progress(0)
             status_text = st.empty()
-            metrics_container = st.container()
         
         try:
-            status_text.info("🚀 **Initializing USPS validation pipeline...**")
+            status_text.info("🚀 **Processing US addresses with USPS API...**")
             progress_bar.progress(10)
             
-            # Process valid addresses
-            all_results = []
+            # Process only US valid addresses
+            usps_results = []
             successful = 0
             failed = 0
             
-            total_valid = len(analysis['valid_addresses'])
+            us_addresses = analysis['us_valid_addresses']
+            total_us = len(us_addresses)
             
-            for i, valid_addr in enumerate(analysis['valid_addresses']):
-                status_text.info(f"🔄 **Processing {i+1}/{total_valid}**: {valid_addr['source_file']}")
-                progress_bar.progress(10 + int(80 * (i+1) / total_valid))
+            for i, us_addr in enumerate(us_addresses):
+                status_text.info(f"🔄 **Processing {i+1}/{total_us}**: {us_addr['source_file']}")
+                progress_bar.progress(10 + int(80 * (i+1) / total_us))
                 
                 # Convert to USPS format and validate
                 address_record = {
-                    'guid': f"{valid_addr['source_file']}_{valid_addr['row_number']}",
-                    'line1': valid_addr['line1'],
-                    'line2': valid_addr['line2'] or None,
-                    'city': valid_addr['city'],
-                    'stateCd': valid_addr['state'],
-                    'zipCd': valid_addr['zip'],
+                    'guid': f"{us_addr['source_file']}_{us_addr['row_number']}",
+                    'line1': us_addr['line1'],
+                    'line2': us_addr['line2'] or None,
+                    'city': us_addr['city'],
+                    'stateCd': us_addr['state'],
+                    'zipCd': us_addr['zip'],
                     'countryCd': 'US'
                 }
                 
                 try:
                     usps_result = self.service.validate_single_address(address_record)
                     
-                    # Enhance result with source tracking
+                    # Enhanced result with categorization info
                     enhanced_result = {
-                        'source_file': valid_addr['source_file'],
-                        'row_number': valid_addr['row_number'],
-                        'input_address': valid_addr['complete_address'],
+                        'source_file': us_addr['source_file'],
+                        'row_number': us_addr['row_number'],
+                        'category': 'us_validated',
+                        'input_address': us_addr['complete_address'],
                         'usps_valid': usps_result.get('mailabilityScore') == '1',
                         'standardized_address': f"{usps_result.get('deliveryAddressLine1', '')} | {usps_result.get('city', '')}, {usps_result.get('stateCd', '')} {usps_result.get('zipCdComplete', '')}",
                         'county': usps_result.get('countyName', ''),
                         'carrier_route': usps_result.get('carrierRoute', ''),
+                        'congressional_district': usps_result.get('congressionalDistrict', ''),
+                        'is_residential': usps_result.get('residentialDeliveryIndicator') == 'Y',
                         'result_percentage': usps_result.get('ResultPercentage', '0'),
                         'error_message': usps_result.get('errorMsg', ''),
                         'full_usps_result': usps_result
                     }
                     
-                    all_results.append(enhanced_result)
+                    usps_results.append(enhanced_result)
                     
                     if enhanced_result['usps_valid']:
                         successful += 1
@@ -959,21 +1179,25 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                 except Exception as e:
                     # Handle individual address errors
                     error_result = {
-                        'source_file': valid_addr['source_file'],
-                        'row_number': valid_addr['row_number'],
-                        'input_address': valid_addr['complete_address'],
+                        'source_file': us_addr['source_file'],
+                        'row_number': us_addr['row_number'],
+                        'category': 'us_error',
+                        'input_address': us_addr['complete_address'],
                         'usps_valid': False,
                         'error_message': str(e),
                         'standardized_address': 'Processing Error'
                     }
-                    all_results.append(error_result)
+                    usps_results.append(error_result)
                     failed += 1
             
             progress_bar.progress(100)
             status_text.success("✅ **USPS validation completed!**")
             
-            # Professional results display
-            self._display_professional_results(all_results, successful, failed, total_valid)
+            # Combine all results for comprehensive output
+            comprehensive_results = self._create_comprehensive_results(analysis, usps_results)
+            
+            # Display enhanced results
+            self._display_comprehensive_results(comprehensive_results, analysis, successful, failed, total_us)
             
             # Clear progress indicators
             progress_bar.empty()
@@ -982,92 +1206,232 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
         except Exception as e:
             progress_bar.empty()
             status_text.empty()
-            st.error(f"❌ **Processing failed**: {str(e)}")
-    
-    def _display_professional_results(self, results, successful, failed, total):
-        """Display professional USPS validation results"""
+            st.error(f"❌ **USPS processing failed**: {str(e)}")
+
+    def _create_comprehensive_results(self, analysis, usps_results):
+        """Create comprehensive results combining all categories"""
         
-        st.markdown("## 🎉 USPS Validation Results")
+        comprehensive = {
+            'us_usps_validated': usps_results,
+            'international_addresses': analysis['international_addresses'],
+            'invalid_addresses': analysis['invalid_addresses'],
+            'summary': {
+                'total_addresses': analysis['total_records'],
+                'us_processed': len(usps_results),
+                'us_valid_count': len([r for r in usps_results if r.get('usps_valid', False)]),
+                'us_invalid_count': len([r for r in usps_results if not r.get('usps_valid', False)]),
+                'international_count': analysis['international_count'],
+                'invalid_count': analysis['invalid_count']
+            }
+        }
         
-        # Professional metrics display
-        col_result1, col_result2, col_result3, col_result4 = st.columns(4)
+        return comprehensive
+
+    def _display_comprehensive_results(self, results, analysis, successful, failed, total_us):
+        """Display comprehensive results with all categories"""
         
-        with col_result1:
-            st.metric("📊 Total Processed", total)
+        st.markdown("## 🎉 Comprehensive Address Validation Results")
         
-        with col_result2:
-            st.metric("✅ USPS Valid", successful, delta=f"{successful/total:.1%}" if total > 0 else "0%")
+        # Enhanced metrics display
+        col1, col2, col3, col4, col5 = st.columns(5)
         
-        with col_result3:
-            st.metric("❌ USPS Invalid", failed, delta=f"-{failed/total:.1%}" if total > 0 else "0%")
+        with col1:
+            st.metric("📊 Total Addresses", results['summary']['total_addresses'])
         
-        with col_result4:
-            st.metric("🎯 Success Rate", f"{successful/total:.1%}" if total > 0 else "0%")
+        with col2:
+            st.metric("🇺🇸 USPS Processed", total_us)
         
-        # Results table with professional formatting
-        if results:
-            results_df = pd.DataFrame(results)
-            
-            # Create display columns
-            display_df = results_df[[
-                'source_file', 'row_number', 'input_address', 
-                'usps_valid', 'standardized_address', 'county', 'error_message'
-            ]].copy()
-            
-            st.markdown("### 📊 Detailed Results")
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'usps_valid': st.column_config.CheckboxColumn('USPS Valid'),
-                    'source_file': st.column_config.TextColumn('File', width='small'),
-                    'row_number': st.column_config.NumberColumn('Row', width='small'),
-                    'input_address': st.column_config.TextColumn('Input Address', width='large'),
-                    'standardized_address': st.column_config.TextColumn('USPS Standardized', width='large'),
-                    'county': st.column_config.TextColumn('County', width='medium'),
-                    'error_message': st.column_config.TextColumn('Notes', width='medium')
-                }
-            )
-            
-            # Professional download options
-            st.markdown("### 📥 Download Results")
-            col_download1, col_download2, col_download3 = st.columns(3)
-            
-            with col_download1:
-                full_csv = results_df.to_csv(index=False)
+        with col3:
+            st.metric("✅ USPS Valid", successful, delta=f"{successful/total_us:.1%}" if total_us > 0 else "0%")
+        
+        with col4:
+            st.metric("🌍 International", results['summary']['international_count'])
+        
+        with col5:
+            st.metric("❌ Invalid/Error", results['summary']['invalid_count'] + failed)
+        
+        # Tabbed results display
+        usps_tab, intl_tab, invalid_tab = st.tabs(["🇺🇸 USPS Results", "🌍 International", "❌ Invalid/Errors"])
+        
+        with usps_tab:
+            if results['us_usps_validated']:
+                usps_df = pd.DataFrame(results['us_usps_validated'])
+                
+                # Separate valid and invalid USPS results
+                valid_usps = usps_df[usps_df['usps_valid'] == True]
+                invalid_usps = usps_df[usps_df['usps_valid'] == False]
+                
+                if not valid_usps.empty:
+                    st.markdown("### ✅ USPS Validated Addresses")
+                    display_columns = ['source_file', 'row_number', 'input_address', 'standardized_address', 'county', 'is_residential']
+                    st.dataframe(
+                        valid_usps[display_columns],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            'is_residential': st.column_config.CheckboxColumn('Residential'),
+                            'source_file': st.column_config.TextColumn('File', width='small'),
+                            'row_number': st.column_config.NumberColumn('Row', width='small')
+                        }
+                    )
+                
+                if not invalid_usps.empty:
+                    st.markdown("### ❌ USPS Validation Failed")
+                    display_columns = ['source_file', 'row_number', 'input_address', 'error_message']
+                    st.dataframe(
+                        invalid_usps[display_columns],
+                        use_container_width=True,
+                        hide_index=True
+                    )
+        
+        with intl_tab:
+            if results['international_addresses']:
+                intl_df = pd.DataFrame(results['international_addresses'])
+                st.dataframe(
+                    intl_df[['source_file', 'row_number', 'complete_address', 'validation_notes']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No international addresses found in the uploaded data.")
+        
+        with invalid_tab:
+            if results['invalid_addresses']:
+                invalid_df = pd.DataFrame(results['invalid_addresses'])
+                invalid_display = invalid_df.copy()
+                invalid_display['issues_text'] = invalid_display['issues'].apply(
+                    lambda x: '; '.join(x) if isinstance(x, list) else str(x)
+                )
+                st.dataframe(
+                    invalid_display[['source_file', 'row_number', 'complete_address', 'issues_text']],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        'issues_text': st.column_config.TextColumn('Issues', width='medium')
+                    }
+                )
+            else:
+                st.info("No invalid addresses found in the uploaded data.")
+        
+        # Enhanced download options
+        st.markdown("### 📥 Download Results")
+        self._create_enhanced_download_buttons(results)
+
+    def _create_enhanced_download_buttons(self, results):
+        """Create enhanced download buttons for all result categories"""
+        
+        col_download1, col_download2, col_download3, col_download4 = st.columns(4)
+        
+        # Combined results download
+        with col_download1:
+            if results['us_usps_validated'] or results['international_addresses'] or results['invalid_addresses']:
+                combined_data = []
+                
+                # Add USPS validated results
+                for result in results['us_usps_validated']:
+                    combined_data.append({
+                        'source_file': result['source_file'],
+                        'row_number': result['row_number'],
+                        'category': 'US_USPS_Validated',
+                        'input_address': result['input_address'],
+                        'output_address': result.get('standardized_address', ''),
+                        'usps_valid': result.get('usps_valid', False),
+                        'county': result.get('county', ''),
+                        'is_residential': result.get('is_residential', ''),
+                        'error_message': result.get('error_message', ''),
+                        'notes': 'USPS Validated'
+                    })
+                
+                # Add international results
+                for result in results['international_addresses']:
+                    combined_data.append({
+                        'source_file': result['source_file'],
+                        'row_number': result['row_number'],
+                        'category': 'International',
+                        'input_address': result['complete_address'],
+                        'output_address': result['complete_address'],
+                        'usps_valid': False,
+                        'county': '',
+                        'is_residential': '',
+                        'error_message': '',
+                        'notes': result['validation_notes']
+                    })
+                
+                # Add invalid results
+                for result in results['invalid_addresses']:
+                    issues_text = '; '.join(result['issues']) if isinstance(result['issues'], list) else str(result.get('issues', ''))
+                    combined_data.append({
+                        'source_file': result['source_file'],
+                        'row_number': result['row_number'],
+                        'category': 'Invalid',
+                        'input_address': result['complete_address'],
+                        'output_address': '',
+                        'usps_valid': False,
+                        'county': '',
+                        'is_residential': '',
+                        'error_message': issues_text,
+                        'notes': result['validation_notes']
+                    })
+                
+                if combined_data:
+                    combined_df = pd.DataFrame(combined_data)
+                    combined_csv = combined_df.to_csv(index=False)
+                    st.download_button(
+                        "📄 All Results",
+                        combined_csv,
+                        f"complete_validation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        "text/csv",
+                        use_container_width=True
+                    )
+        
+        # US USPS results only
+        with col_download2:
+            if results['us_usps_validated']:
+                usps_df = pd.DataFrame(results['us_usps_validated'])
+                usps_csv = usps_df.to_csv(index=False)
                 st.download_button(
-                    "📄 Download All Results",
-                    full_csv,
-                    f"usps_validation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "🇺🇸 USPS Results",
+                    usps_csv,
+                    f"usps_validated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     "text/csv",
                     use_container_width=True
                 )
-            
-            with col_download2:
-                valid_results = results_df[results_df['usps_valid'] == True]
-                if not valid_results.empty:
-                    valid_csv = valid_results.to_csv(index=False)
-                    st.download_button(
-                        "✅ Download Valid Only",
-                        valid_csv,
-                        f"valid_addresses_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        "text/csv",
-                        use_container_width=True
-                    )
-            
-            with col_download3:
-                invalid_results = results_df[results_df['usps_valid'] == False]
-                if not invalid_results.empty:
-                    invalid_csv = invalid_results.to_csv(index=False)
-                    st.download_button(
-                        "❌ Download Invalid Only",
-                        invalid_csv,
-                        f"invalid_addresses_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        "text/csv",
-                        use_container_width=True
-                    )
-    
+        
+        # International addresses only
+        with col_download3:
+            if results['international_addresses']:
+                intl_df = pd.DataFrame(results['international_addresses'])
+                intl_csv = intl_df.to_csv(index=False)
+                st.download_button(
+                    "🌍 International",
+                    intl_csv,
+                    f"international_addresses_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "text/csv",
+                    use_container_width=True
+                )
+        
+        # Invalid addresses only
+        with col_download4:
+            if results['invalid_addresses']:
+                invalid_df = pd.DataFrame(results['invalid_addresses'])
+                # Add issues as text for CSV
+                invalid_df_export = invalid_df.copy()
+                invalid_df_export['issues_text'] = invalid_df_export['issues'].apply(
+                    lambda x: '; '.join(x) if isinstance(x, list) else str(x)
+                )
+                invalid_csv = invalid_df_export.to_csv(index=False)
+                st.download_button(
+                    "❌ Invalid",
+                    invalid_csv,
+                    f"invalid_addresses_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "text/csv",
+                    use_container_width=True
+                )
+
+    # =========================================================================
+    # EXISTING METHODS (Keep all the existing methods from the original app.py)
+    # =========================================================================
+
     def _process_single_address(self, line1, line2, city, state_cd, zip_cd):
         """Process single address validation"""
         if not all([line1, city, state_cd, zip_cd]):
@@ -1404,7 +1768,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
         # Main tabs
         name_tab, address_tab, monitoring_tab = st.tabs([
             "🤖 Enhanced Name Validation",
-            "🏠 Professional Address Validation", 
+            "🏠 Enhanced Address Validation", 
             "📊 System Analytics"
         ])
         

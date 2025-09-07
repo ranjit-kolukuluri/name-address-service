@@ -698,10 +698,22 @@ class AddressValidator:
     """Enhanced USPS Address Validator with batch processing and CSV standardization"""
     
     def __init__(self):
+        
         self.client_id, self.client_secret = load_usps_credentials()
         self._access_token = None
         self._token_expires_at = 0
+        
+        # Add US States for validation - ADD THIS
+        self.US_STATES = {
+            'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+            'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+            'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+            'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+            'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+        }
+        
         logger.info(f"Address validator initialized - configured: {self.is_configured()}", "VALIDATOR")
+
     
     def is_configured(self) -> bool:
         """Check if USPS credentials are available"""
