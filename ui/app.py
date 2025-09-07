@@ -1,6 +1,6 @@
 # ui/app.py
 """
-Complete Professional Streamlit UI for name and address validation with enhanced 3-bucket functionality
+Complete Professional Streamlit UI for name and address validation with enhanced state name/code support
 """
 
 import streamlit as st
@@ -23,7 +23,7 @@ from utils.logger import logger
 
 
 class ValidatorApp:
-    """Complete Professional Streamlit application with enhanced 3-bucket address validation"""
+    """Complete Professional Streamlit application with enhanced state name/code support"""
     
     def __init__(self):
         self.service = ValidationService()
@@ -48,6 +48,87 @@ class ValidatorApp:
                 'successful': 0,
                 'failed': 0
             }
+        
+        # Enhanced State name to code mapping
+        self.state_name_to_code = {
+            # Full state names to codes
+            'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
+            'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE',
+            'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID',
+            'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA', 'kansas': 'KS',
+            'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+            'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS',
+            'missouri': 'MO', 'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV',
+            'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+            'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH', 'oklahoma': 'OK',
+            'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+            'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT',
+            'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV',
+            'wisconsin': 'WI', 'wyoming': 'WY', 'district of columbia': 'DC',
+            
+            # Common abbreviations and variations
+            'calif': 'CA', 'cali': 'CA', 'cal': 'CA',
+            'fla': 'FL', 'florida': 'FL',
+            'tex': 'TX', 'texas': 'TX',
+            'penn': 'PA', 'penna': 'PA',
+            'mass': 'MA', 'massachusetts': 'MA',
+            'conn': 'CT', 'connecticut': 'CT',
+            'wash': 'WA', 'washington': 'WA',
+            'ore': 'OR', 'oreg': 'OR',
+            'mich': 'MI', 'michigan': 'MI',
+            'ill': 'IL', 'illinois': 'IL',
+            'ind': 'IN', 'indiana': 'IN',
+            'tenn': 'TN', 'tennessee': 'TN',
+            'ky': 'KY', 'kentucky': 'KY',
+            'la': 'LA', 'louisiana': 'LA',
+            'miss': 'MS', 'mississippi': 'MS',
+            'ala': 'AL', 'alabama': 'AL',
+            'ga': 'GA', 'georgia': 'GA',
+            'nc': 'NC', 'n carolina': 'NC', 'n. carolina': 'NC',
+            'sc': 'SC', 's carolina': 'SC', 's. carolina': 'SC',
+            'nd': 'ND', 'n dakota': 'ND', 'n. dakota': 'ND',
+            'sd': 'SD', 's dakota': 'SD', 's. dakota': 'SD',
+            'wv': 'WV', 'w virginia': 'WV', 'w. virginia': 'WV',
+            'dc': 'DC', 'd.c.': 'DC', 'washington dc': 'DC', 'washington d.c.': 'DC'
+        }
+        
+        # Valid state codes for quick lookup
+        self.valid_state_codes = {
+            'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+            'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+            'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+            'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+            'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+        }
+    
+    def _normalize_state_input(self, state_input):
+        """
+        Normalize state input to standard 2-letter state code
+        Accepts both state names and codes
+        Returns: (normalized_code, is_valid, original_input)
+        """
+        if not state_input or not state_input.strip():
+            return '', False, state_input
+        
+        # Clean the input
+        cleaned_input = state_input.strip().lower()
+        original_input = state_input.strip()
+        
+        # Check if it's already a valid state code
+        if len(cleaned_input) == 2 and cleaned_input.upper() in self.valid_state_codes:
+            return cleaned_input.upper(), True, original_input
+        
+        # Check if it's a state name or abbreviation
+        if cleaned_input in self.state_name_to_code:
+            return self.state_name_to_code[cleaned_input], True, original_input
+        
+        # Try without punctuation
+        cleaned_no_punct = cleaned_input.replace('.', '').replace(',', '')
+        if cleaned_no_punct in self.state_name_to_code:
+            return self.state_name_to_code[cleaned_no_punct], True, original_input
+        
+        # Not found
+        return original_input.upper(), False, original_input
     
     def apply_styling(self):
         """Apply enhanced professional CSS styling"""
@@ -333,7 +414,7 @@ class ValidatorApp:
         st.markdown('''
         <div class="header">
             <div class="title">🚀 Name & Address Validator</div>
-            <div class="subtitle">Enterprise-Grade Validation • Dictionary Intelligence • USPS Integration</div>
+            <div class="subtitle">Enterprise-Grade Validation • Dictionary Intelligence • USPS Integration • State Name Support</div>
         </div>
         ''', unsafe_allow_html=True)
         
@@ -366,6 +447,7 @@ class ValidatorApp:
                     <div><strong>👤 Surnames:</strong> {stats.get('surnames_count', 0):,}</div>
                     <div><strong>⚧ Gender Maps:</strong> {stats.get('gender_mappings_count', 0):,}</div>
                     <div><strong>🏢 Business Terms:</strong> {stats.get('business_words_count', 0):,}</div>
+                    <div><strong>🗺️ State Support:</strong> <span style="color: #059669;">Names + Codes</span></div>
                 </div>
             </div>
             ''', unsafe_allow_html=True)
@@ -522,7 +604,7 @@ class ValidatorApp:
                     st.error(f"❌ Error reading file: {str(e)}")
     
     def render_address_validation(self):
-        """Render professional address validation interface with enhanced 3-bucket categorization"""
+        """Render professional address validation interface with enhanced state name/code support"""
         st.markdown("## 🏠 Enhanced Address Validation")
         
         # Professional status bar
@@ -532,14 +614,14 @@ class ValidatorApp:
         single_tab, csv_tab = st.tabs(["📍 Single Address", "📊 Enhanced Batch Processing"])
         
         # =========================================================================
-        # TAB 1: SINGLE ADDRESS VALIDATION
+        # TAB 1: SINGLE ADDRESS VALIDATION WITH STATE NAME SUPPORT
         # =========================================================================
         
         with single_tab:
             self._render_single_address_validation()
         
         # =========================================================================
-        # TAB 2: ENHANCED 3-BUCKET BATCH CSV PROCESSING
+        # TAB 2: ENHANCED 3-BUCKET BATCH CSV PROCESSING WITH STATE NORMALIZATION
         # =========================================================================
         
         with csv_tab:
@@ -565,8 +647,11 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             return True
     
     def _render_single_address_validation(self):
-        """Render professional single address validation"""
+        """Render professional single address validation with state name support"""
         st.markdown("### 🎯 Single Address Validation")
+        
+        # Enhanced info about state support
+        st.info("💡 **Enhanced State Support**: Enter state as code (CA, NY) or full name (California, New York)")
         
         # Professional form layout
         with st.container():
@@ -602,9 +687,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                     with col2a:
                         state_cd = st.text_input(
                             "🗺️ State*", 
-                            placeholder="NY",
-                            max_chars=2,
-                            help="2-letter state code"
+                            placeholder="NY or New York",
+                            help="State code (NY) or name (New York)"
                         )
                     with col2b:
                         zip_cd = st.text_input(
@@ -628,7 +712,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             st.markdown("</div>", unsafe_allow_html=True)
     
     def _render_professional_csv_processing(self):
-        """Render professional CSV processing with enhanced 3-bucket categorization"""
+        """Render professional CSV processing with enhanced 3-bucket categorization and state normalization"""
         st.markdown("### 📊 Enhanced 3-Bucket Processing")
         
         # Professional info panel
@@ -638,7 +722,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                         padding: 1.5rem; border-radius: 12px; border-left: 4px solid #3b82f6;">
                 <h4 style="margin: 0; color: #1e40af;">🚀 Intelligent 3-Bucket Processing Pipeline</h4>
                 <p style="margin: 0.5rem 0 0 0; color: #1e40af;">
-                    🇺🇸 US Addresses → USPS Validation  •  🌍 International → Identified & Categorized  •  ❌ Invalid → Error Analysis
+                    🇺🇸 US Addresses → USPS Validation  •  🌍 International → Identified & Categorized  •  ❌ Invalid → Error Analysis<br>
+                    🔄 <strong>State Names Supported:</strong> "California" or "CA", "New York" or "NY", etc.
                 </p>
             </div>
             """, unsafe_allow_html=True)
@@ -650,7 +735,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             type=['csv'],
             accept_multiple_files=True,
             key="enhanced_csv_upload",
-            help="Supports any CSV format - addresses will be automatically categorized"
+            help="Supports any CSV format - state names and codes both accepted"
         )
         
         if uploaded_files:
@@ -692,7 +777,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                     <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #10b981; margin: 1rem 0;">
                         <strong>🎯 Ready for USPS Processing:</strong> {us_count} US addresses will be validated with USPS API<br>
                         <strong>🌍 International Addresses:</strong> {intl_count} identified and categorized (no USPS processing needed)<br>
-                        <strong>❌ Invalid Addresses:</strong> {invalid_count} require manual review
+                        <strong>❌ Invalid Addresses:</strong> {invalid_count} require manual review<br>
+                        <strong>🔄 State Normalization:</strong> State names automatically converted to codes for USPS
                     </div>
                     """.format(
                         us_count=file_analysis['us_valid_count'],
@@ -717,11 +803,11 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                 st.error("❌ No valid CSV files found for processing")
 
     # =========================================================================
-    # ENHANCED 3-BUCKET CATEGORIZATION METHODS
+    # ENHANCED 3-BUCKET CATEGORIZATION METHODS WITH STATE NAME SUPPORT
     # =========================================================================
 
     def _analyze_uploaded_files(self, uploaded_files):
-        """Analyze uploaded files and categorize addresses into US Valid, International, and Invalid"""
+        """Analyze uploaded files and categorize addresses with state name normalization"""
         analysis = {
             'valid_files': [],
             'total_records': 0,
@@ -758,7 +844,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                     })
                     continue
                 
-                # Categorize each address
+                # Categorize each address with state normalization
                 file_us_valid = []
                 file_international = []
                 file_invalid = []
@@ -813,7 +899,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
         return analysis
 
     def _categorize_address(self, address_data, row_num, filename):
-        """Categorize address into US Valid, International, or Invalid"""
+        """Enhanced categorize address with state name/code normalization"""
         result = {
             'row_number': row_num,
             'source_file': filename,
@@ -826,8 +912,15 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             'zip': address_data.get('zipCd', ''),
             'country': address_data.get('countryCd', 'US').upper(),
             'complete_address': '',
-            'validation_notes': ''
+            'validation_notes': '',
+            'normalized_state': '',  # Add this field
+            'state_normalization_applied': False
         }
+        
+        # Normalize state input
+        normalized_state, is_valid_state, original_state = self._normalize_state_input(result['state'])
+        result['normalized_state'] = normalized_state
+        result['state_normalization_applied'] = (normalized_state != original_state.upper())
         
         # Create complete address string
         address_parts = []
@@ -838,6 +931,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
         if result['city']:
             address_parts.append(result['city'])
         if result['state']:
+            # Show original state in address display
             address_parts.append(result['state'])
         if result['zip']:
             address_parts.append(result['zip'])
@@ -879,18 +973,53 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             result['validation_notes'] = f"Invalid - {zip_analysis['reason']}"
             return result
         
-        # Step 4: Validate US-specific requirements
-        us_validation = self._validate_us_address_format(result)
+        # Step 4: Validate US-specific requirements with enhanced state validation
+        us_validation = self._validate_us_address_format_enhanced(result, normalized_state, is_valid_state)
         
         if us_validation['valid']:
             result['category'] = 'us_valid'
-            result['validation_notes'] = "Valid US address - Ready for USPS validation"
+            # Update state to normalized version for USPS processing
+            result['state'] = normalized_state
+            if result['state_normalization_applied']:
+                result['validation_notes'] = f"Valid US address - State normalized from '{original_state}' to '{normalized_state}'"
+            else:
+                result['validation_notes'] = "Valid US address - Ready for USPS validation"
         else:
             result['category'] = 'invalid'
             result['issues'] = us_validation['issues']
             result['validation_notes'] = f"Invalid - {'; '.join(us_validation['issues'])}"
         
         return result
+
+    def _validate_us_address_format_enhanced(self, address_data, normalized_state, is_valid_state):
+        """Enhanced US address format validation with state name/code support"""
+        issues = []
+        
+        # Validate normalized state
+        if not is_valid_state:
+            issues.append(f"Invalid US state: '{address_data['state']}' (not recognized as state name or code)")
+        
+        # Validate ZIP code format
+        zip_code = address_data['zip'].strip()
+        if not re.match(r'^\d{5}(-\d{4})?$', zip_code):
+            issues.append("ZIP code must be 5 digits or ZIP+4 format")
+        
+        # Basic street address validation
+        line1 = address_data['line1'].strip()
+        if len(line1) < 3:
+            issues.append("Street address too short")
+        
+        # City validation (basic)
+        city = address_data['city'].strip()
+        if len(city) < 2:
+            issues.append("City name too short")
+        elif not re.match(r'^[A-Za-z\s\.\-\']+$', city):
+            issues.append("City contains invalid characters")
+        
+        return {
+            'valid': len(issues) == 0,
+            'issues': issues
+        }
 
     def _analyze_zip_code(self, zip_code):
         """Analyze ZIP code to determine if it's US, International, or Invalid"""
@@ -957,50 +1086,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
         # If it doesn't match any known pattern, it's likely invalid
         return {'type': 'invalid', 'reason': 'Unrecognized postal code format'}
 
-    def _validate_us_address_format(self, address_data):
-        """Validate US-specific address format requirements"""
-        issues = []
-        
-        # Get US_STATES from the service's address validator
-        US_STATES = getattr(self.service.address_validator, 'US_STATES', {
-            'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-            'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-            'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-            'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-            'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
-        })
-        
-        # Validate state code
-        state = address_data['state'].strip().upper()
-        if len(state) != 2:
-            issues.append("State must be 2-letter code")
-        elif state not in US_STATES:
-            issues.append(f"Invalid US state code: {state}")
-        
-        # Validate ZIP code format (already checked in analyze_zip_code, but double-check)
-        zip_code = address_data['zip'].strip()
-        if not re.match(r'^\d{5}(-\d{4})?$', zip_code):
-            issues.append("ZIP code must be 5 digits or ZIP+4 format")
-        
-        # Basic street address validation
-        line1 = address_data['line1'].strip()
-        if len(line1) < 3:
-            issues.append("Street address too short")
-        
-        # City validation (basic)
-        city = address_data['city'].strip()
-        if len(city) < 2:
-            issues.append("City name too short")
-        elif not re.match(r'^[A-Za-z\s\.\-\']+$', city):
-            issues.append("City contains invalid characters")
-        
-        return {
-            'valid': len(issues) == 0,
-            'issues': issues
-        }
-
     def _display_categorized_results(self, analysis, show_us_valid, show_international, show_invalid):
-        """Display categorized address results with enhanced UI"""
+        """Enhanced display with state normalization indicators"""
         
         # Enhanced summary metrics
         col_metric1, col_metric2, col_metric3, col_metric4 = st.columns(4)
@@ -1020,6 +1107,13 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             invalid_pct = analysis['quality_breakdown']['invalid_percentage']
             st.metric("❌ Invalid", analysis['invalid_count'], delta=f"{invalid_pct:.1%}")
         
+        # Check for state normalizations
+        state_normalizations = len([addr for addr in analysis['us_valid_addresses'] 
+                                  if addr.get('state_normalization_applied', False)])
+        
+        if state_normalizations > 0:
+            st.info(f"🔄 **State Normalization**: {state_normalizations} addresses had state names converted to standard codes (e.g., 'California' → 'CA')")
+        
         # File-by-file breakdown
         with st.expander("📋 File Analysis Breakdown"):
             for detail in analysis['file_details']:
@@ -1034,7 +1128,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                 else:
                     st.write(f"❌ **{detail['filename']}**: {detail.get('reason', 'Failed')}")
         
-        # Categorized displays
+        # Categorized displays with enhanced state info
         if show_us_valid and analysis['us_valid_addresses']:
             st.markdown("### 🇺🇸 US Valid Addresses (Ready for USPS)")
             us_valid_df = pd.DataFrame(analysis['us_valid_addresses'])
@@ -1043,7 +1137,16 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             <div style="background: #f0f9ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #10b981;">
             """, unsafe_allow_html=True)
             
-            display_columns = ['source_file', 'row_number', 'complete_address', 'validation_notes']
+            # Enhanced display columns including state normalization info
+            display_columns = ['source_file', 'row_number', 'complete_address', 'normalized_state', 'validation_notes']
+            
+            # Add state normalization indicator
+            if 'state_normalization_applied' in us_valid_df.columns:
+                us_valid_df['state_normalized'] = us_valid_df['state_normalization_applied'].apply(
+                    lambda x: '🔄 Yes' if x else 'No'
+                )
+                display_columns = ['source_file', 'row_number', 'complete_address', 'normalized_state', 'state_normalized', 'validation_notes']
+            
             st.dataframe(
                 us_valid_df[display_columns],
                 use_container_width=True,
@@ -1052,6 +1155,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                     'source_file': st.column_config.TextColumn('File', width='small'),
                     'row_number': st.column_config.NumberColumn('Row', width='small'),
                     'complete_address': st.column_config.TextColumn('Address', width='large'),
+                    'normalized_state': st.column_config.TextColumn('State Code', width='small'),
+                    'state_normalized': st.column_config.TextColumn('Normalized', width='small'),
                     'validation_notes': st.column_config.TextColumn('Status', width='medium')
                 }
             )
@@ -1109,7 +1214,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             st.markdown("</div>", unsafe_allow_html=True)
 
     def _process_us_addresses_with_usps(self, analysis):
-        """Process only US valid addresses with USPS API"""
+        """Enhanced USPS processing with state normalization tracking"""
         
         if not analysis['us_valid_addresses']:
             st.warning("⚠️ No US valid addresses to process with USPS")
@@ -1130,6 +1235,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             usps_results = []
             successful = 0
             failed = 0
+            state_normalizations = 0
             
             us_addresses = analysis['us_valid_addresses']
             total_us = len(us_addresses)
@@ -1138,13 +1244,17 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                 status_text.info(f"🔄 **Processing {i+1}/{total_us}**: {us_addr['source_file']}")
                 progress_bar.progress(10 + int(80 * (i+1) / total_us))
                 
+                # Track state normalizations
+                if us_addr.get('state_normalization_applied', False):
+                    state_normalizations += 1
+                
                 # Convert to USPS format and validate
                 address_record = {
                     'guid': f"{us_addr['source_file']}_{us_addr['row_number']}",
                     'line1': us_addr['line1'],
                     'line2': us_addr['line2'] or None,
                     'city': us_addr['city'],
-                    'stateCd': us_addr['state'],
+                    'stateCd': us_addr['normalized_state'],  # Use normalized state
                     'zipCd': us_addr['zip'],
                     'countryCd': 'US'
                 }
@@ -1158,6 +1268,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                         'row_number': us_addr['row_number'],
                         'category': 'us_validated',
                         'input_address': us_addr['complete_address'],
+                        'normalized_state': us_addr['normalized_state'],
+                        'state_normalization_applied': us_addr.get('state_normalization_applied', False),
                         'usps_valid': usps_result.get('mailabilityScore') == '1',
                         'standardized_address': f"{usps_result.get('deliveryAddressLine1', '')} | {usps_result.get('city', '')}, {usps_result.get('stateCd', '')} {usps_result.get('zipCdComplete', '')}",
                         'county': usps_result.get('countyName', ''),
@@ -1183,6 +1295,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                         'row_number': us_addr['row_number'],
                         'category': 'us_error',
                         'input_address': us_addr['complete_address'],
+                        'normalized_state': us_addr['normalized_state'],
+                        'state_normalization_applied': us_addr.get('state_normalization_applied', False),
                         'usps_valid': False,
                         'error_message': str(e),
                         'standardized_address': 'Processing Error'
@@ -1192,6 +1306,10 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
             
             progress_bar.progress(100)
             status_text.success("✅ **USPS validation completed!**")
+            
+            # Show state normalization statistics
+            if state_normalizations > 0:
+                st.info(f"🔄 **State Normalization Applied**: {state_normalizations} addresses had their state names/abbreviations normalized to standard codes")
             
             # Combine all results for comprehensive output
             comprehensive_results = self._create_comprehensive_results(analysis, usps_results)
@@ -1263,17 +1381,41 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                 
                 if not valid_usps.empty:
                     st.markdown("### ✅ USPS Validated Addresses")
-                    display_columns = ['source_file', 'row_number', 'input_address', 'standardized_address', 'county', 'is_residential']
-                    st.dataframe(
-                        valid_usps[display_columns],
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            'is_residential': st.column_config.CheckboxColumn('Residential'),
-                            'source_file': st.column_config.TextColumn('File', width='small'),
-                            'row_number': st.column_config.NumberColumn('Row', width='small')
-                        }
-                    )
+                    
+                    # Enhanced display columns including state normalization info
+                    display_columns = ['source_file', 'row_number', 'input_address', 'standardized_address', 'normalized_state', 'county', 'is_residential']
+                    
+                    # Add state normalization indicator
+                    if 'state_normalization_applied' in valid_usps.columns:
+                        valid_usps_display = valid_usps.copy()
+                        valid_usps_display['state_normalized'] = valid_usps_display['state_normalization_applied'].apply(
+                            lambda x: '🔄' if x else ''
+                        )
+                        display_columns = ['source_file', 'row_number', 'input_address', 'standardized_address', 'normalized_state', 'state_normalized', 'county', 'is_residential']
+                        
+                        st.dataframe(
+                            valid_usps_display[display_columns],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                'is_residential': st.column_config.CheckboxColumn('Residential'),
+                                'state_normalized': st.column_config.TextColumn('State Norm.', width='small'),
+                                'normalized_state': st.column_config.TextColumn('State Code', width='small'),
+                                'source_file': st.column_config.TextColumn('File', width='small'),
+                                'row_number': st.column_config.NumberColumn('Row', width='small')
+                            }
+                        )
+                    else:
+                        st.dataframe(
+                            valid_usps[display_columns],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                'is_residential': st.column_config.CheckboxColumn('Residential'),
+                                'source_file': st.column_config.TextColumn('File', width='small'),
+                                'row_number': st.column_config.NumberColumn('Row', width='small')
+                            }
+                        )
                 
                 if not invalid_usps.empty:
                     st.markdown("### ❌ USPS Validation Failed")
@@ -1335,6 +1477,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                         'category': 'US_USPS_Validated',
                         'input_address': result['input_address'],
                         'output_address': result.get('standardized_address', ''),
+                        'normalized_state': result.get('normalized_state', ''),
+                        'state_normalized': 'Yes' if result.get('state_normalization_applied', False) else 'No',
                         'usps_valid': result.get('usps_valid', False),
                         'county': result.get('county', ''),
                         'is_residential': result.get('is_residential', ''),
@@ -1350,6 +1494,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                         'category': 'International',
                         'input_address': result['complete_address'],
                         'output_address': result['complete_address'],
+                        'normalized_state': '',
+                        'state_normalized': 'N/A',
                         'usps_valid': False,
                         'county': '',
                         'is_residential': '',
@@ -1366,6 +1512,8 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                         'category': 'Invalid',
                         'input_address': result['complete_address'],
                         'output_address': '',
+                        'normalized_state': result.get('normalized_state', ''),
+                        'state_normalized': 'Yes' if result.get('state_normalization_applied', False) else 'No',
                         'usps_valid': False,
                         'county': '',
                         'is_residential': '',
@@ -1433,10 +1581,21 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
     # =========================================================================
 
     def _process_single_address(self, line1, line2, city, state_cd, zip_cd):
-        """Process single address validation"""
+        """Process single address validation with state name support"""
         if not all([line1, city, state_cd, zip_cd]):
             st.error("❌ Please fill in all required fields (marked with *)")
             return
+        
+        # Normalize state input
+        normalized_state, is_valid_state, original_state = self._normalize_state_input(state_cd)
+        
+        if not is_valid_state:
+            st.error(f"❌ Invalid state: '{state_cd}' is not recognized as a US state name or code")
+            return
+        
+        # Show state normalization if applied
+        if normalized_state != original_state.upper():
+            st.info(f"🔄 State normalized: '{original_state}' → '{normalized_state}'")
         
         with st.spinner("🔄 Validating with USPS..."):
             address_record = {
@@ -1444,7 +1603,7 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
                 'line1': line1,
                 'line2': line2 if line2 else None,
                 'city': city,
-                'stateCd': state_cd.upper(),
+                'stateCd': normalized_state,  # Use normalized state
                 'zipCd': zip_cd,
                 'countryCd': 'US'
             }
