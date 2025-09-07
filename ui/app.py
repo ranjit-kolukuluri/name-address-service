@@ -454,7 +454,7 @@ class ValidatorApp:
     
     def render_name_validation(self):
         """Render enhanced name validation interface"""
-        st.markdown("## 👤 Enhanced Name Validation")
+        st.markdown("## 👤 Name Validation")
         
         # Single name validation
         with st.expander("Single Name Validation", expanded=True):
@@ -496,58 +496,59 @@ class ValidatorApp:
                             self._display_enhanced_name_result(result['names'][0])
         
         # Enhanced API Testing
-        with st.expander("Enhanced API Testing"):
-            st.markdown("### Test Enhanced API Format")
+       
+        # with st.expander("Enhanced API Testing"):
+        #     st.markdown("### Test Enhanced API Format")
             
-            # Get example payload
-            default_payload = self.service.get_example_payload()
+        #     # Get example payload
+        #     default_payload = self.service.get_example_payload()
             
-            json_input = st.text_area(
-                "JSON Payload (Enhanced Format):",
-                value=json.dumps(default_payload, indent=2),
-                height=300
-            )
+        #     json_input = st.text_area(
+        #         "JSON Payload (Enhanced Format):",
+        #         value=json.dumps(default_payload, indent=2),
+        #         height=300
+        #     )
             
-            if st.button("🚀 Test Enhanced API", type="primary"):
-                try:
-                    payload = json.loads(json_input)
+        #     if st.button("🚀 Test Enhanced API", type="primary"):
+        #         try:
+        #             payload = json.loads(json_input)
                     
-                    with st.spinner("Processing with dictionary lookup + AI fallback..."):
-                        result = self.service.validate_names(payload)
+        #             with st.spinner("Processing with dictionary lookup + AI fallback..."):
+        #                 result = self.service.validate_names(payload)
                         
-                        st.success("✅ API request processed successfully")
+        #                 st.success("✅ API request processed successfully")
                         
-                        # Display results with method information
-                        for name_result in result['names']:
-                            self._display_enhanced_name_result(name_result)
+        #                 # Display results with method information
+        #                 for name_result in result['names']:
+        #                     self._display_enhanced_name_result(name_result)
                         
-                        # Show processing statistics
-                        if 'processing_stats' in result:
-                            stats = result['processing_stats']
-                            with st.expander("📈 Processing Statistics"):
-                                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+        #                 # Show processing statistics
+        #                 if 'processing_stats' in result:
+        #                     stats = result['processing_stats']
+        #                     with st.expander("📈 Processing Statistics"):
+        #                         col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
                                 
-                                with col_stat1:
-                                    st.metric("Total Processed", stats['total_processed'])
+        #                         with col_stat1:
+        #                             st.metric("Total Processed", stats['total_processed'])
                                 
-                                with col_stat2:
-                                    methods = stats.get('validation_methods', {})
-                                    st.metric("Dictionary", methods.get('deterministic', 0))
+        #                         with col_stat2:
+        #                             methods = stats.get('validation_methods', {})
+        #                             st.metric("Dictionary", methods.get('deterministic', 0))
                                 
-                                with col_stat3:
-                                    st.metric("Hybrid", methods.get('hybrid', 0))
+        #                         with col_stat3:
+        #                             st.metric("Hybrid", methods.get('hybrid', 0))
                                 
-                                with col_stat4:
-                                    st.metric("AI Fallback", methods.get('ai_fallback', 0))
+        #                         with col_stat4:
+        #                             st.metric("AI Fallback", methods.get('ai_fallback', 0))
                         
-                        # Show raw JSON for developers
-                        with st.expander("Raw JSON Response"):
-                            st.json(result)
+        #                 # Show raw JSON for developers
+        #                 with st.expander("Raw JSON Response"):
+        #                     st.json(result)
                         
-                except json.JSONDecodeError:
-                    st.error("❌ Invalid JSON format")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+        #         except json.JSONDecodeError:
+        #             st.error("❌ Invalid JSON format")
+        #         except Exception as e:
+        #             st.error(f"❌ Error: {str(e)}") 
         
         # Enhanced CSV Upload
         with st.expander("Enhanced CSV Upload"):
@@ -605,7 +606,7 @@ class ValidatorApp:
     
     def render_address_validation(self):
         """Render professional address validation interface with enhanced state name/code support"""
-        st.markdown("## 🏠 Enhanced Address Validation")
+        st.markdown("## 🏠 Address Validation")
         
         # Professional status bar
         self._render_address_status_bar()
@@ -1926,9 +1927,9 @@ echo 'USPS_CLIENT_SECRET=your_secret' >> .env
         
         # Main tabs
         name_tab, address_tab, monitoring_tab = st.tabs([
-            "🤖 Enhanced Name Validation",
-            "🏠 Enhanced Address Validation", 
-            "📊 System Analytics"
+            "🤖 Name Validation",
+            "🏠 Address Validation", 
+            "📊 Monitoring"
         ])
         
         with name_tab:

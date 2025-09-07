@@ -171,7 +171,7 @@ class NameValidator:
         
         # Common prefixes and suffixes (fallback)
         self.ai_prefixes = {
-            'mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'professor', 'rev', 'reverend',
+            'mr', 'mrs', 'ms', 'miss', 'dr','drs', 'prof', 'professor', 'rev', 'reverend',
             'father', 'mother', 'sister', 'brother', 'sir', 'lady', 'lord', 'dame',
             'capt', 'captain', 'col', 'colonel', 'maj', 'major', 'lt', 'lieutenant',
             'sgt', 'sergeant', 'gen', 'general', 'admiral', 'judge', 'justice'
@@ -188,7 +188,7 @@ class NameValidator:
             'llc', 'inc', 'corp', 'corporation', 'company', 'ltd', 'limited', 'co.',
             'hospital', 'medical', 'clinic', 'center', 'centre', 'services', 'solutions',
             'group', 'partners', 'associates', 'firm', 'office', 'bank', 'trust',
-            'foundation', 'institute', 'university', 'college', 'school', 'academy'
+            'foundation', 'institute', 'university', 'college', 'school', 'academy','jtly','jointly'
         }
     
     def validate(self, first_name: str, last_name: str) -> Dict:

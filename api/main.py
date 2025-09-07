@@ -1,9 +1,9 @@
-# api/main.py - ENHANCED VERSION WITH 3-BUCKET CATEGORIZATION
+# api/main.py - FIXED VERSION WITH MULTI-CSV AND RATE LIMITING
 """
-Enhanced FastAPI server with 3-bucket address categorization and state name support
+Enhanced FastAPI server with proper multi-CSV upload and USPS rate limiting
 """
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Optional, Dict, Any
@@ -11,6 +11,7 @@ import pandas as pd
 import time
 import sys
 import re
+import asyncio
 from pathlib import Path
 from datetime import datetime
 
@@ -31,7 +32,7 @@ from utils.config import Config
 # Initialize FastAPI app
 app = FastAPI(
     title="Enhanced Name & Address Validation API",
-    description="Advanced validation service with 3-bucket categorization and state name support",
+    description="Advanced validation service with 3-bucket categorization and USPS rate limiting",
     version=Config.API_VERSION,
     docs_url="/docs",
     redoc_url="/redoc"
@@ -48,6 +49,29 @@ app.add_middleware(
 
 # Initialize validation service
 validation_service = None
+
+# USPS Rate Limiting
+class USPSRateLimiter:
+    """Rate limiter for USPS API calls"""
+    
+    def __init__(self, calls_per_second: float = 2.0):
+        self.calls_per_second = calls_per_second
+        self.min_interval = 1.0 / calls_per_second
+        self.last_call_time = 0
+        
+    async def wait_if_needed(self):
+        """Wait if needed to respect rate limits"""
+        current_time = time.time()
+        time_since_last_call = current_time - self.last_call_time
+        
+        if time_since_last_call < self.min_interval:
+            wait_time = self.min_interval - time_since_last_call
+            await asyncio.sleep(wait_time)
+        
+        self.last_call_time = time.time()
+
+# Initialize rate limiter (2 calls per second to be safe)
+usps_rate_limiter = USPSRateLimiter(calls_per_second=2.0)
 
 # Enhanced state normalization for API
 class StateNormalizer:
@@ -277,27 +301,76 @@ class AddressCategorizer:
 # Initialize categorizer
 address_categorizer = AddressCategorizer()
 
+# Enhanced USPS validation with rate limiting and retry logic
+async def validate_with_usps_rate_limited(address_data: Dict, max_retries: int = 3) -> Dict:
+    """Validate address with USPS API using rate limiting and retry logic"""
+    
+    for attempt in range(max_retries):
+        try:
+            # Wait for rate limiting
+            await usps_rate_limiter.wait_if_needed()
+            
+            # Call USPS validation
+            result = validation_service.validate_single_address(address_data)
+            return result
+            
+        except Exception as e:
+            error_str = str(e)
+            
+            # Handle rate limiting specifically
+            if "429" in error_str or "Too Many Requests" in error_str:
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2  # Exponential backoff: 2s, 4s, 6s
+                    logger.warning(f"USPS rate limit hit, waiting {wait_time}s before retry {attempt + 1}", "API")
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"USPS rate limit exceeded after {max_retries} attempts", "API")
+                    raise HTTPException(
+                        status_code=429, 
+                        detail={
+                            "error": "USPS API rate limit exceeded",
+                            "message": "Please try again in a few moments. The USPS API has temporary rate limits.",
+                            "retry_after": 30,
+                            "suggestion": "For bulk processing, consider using smaller batches."
+                        }
+                    )
+            
+            # Handle other errors
+            elif attempt < max_retries - 1:
+                logger.warning(f"USPS API error on attempt {attempt + 1}: {error_str}", "API")
+                await asyncio.sleep(1)  # Brief wait before retry
+                continue
+            else:
+                # Final attempt failed
+                logger.error(f"USPS API failed after {max_retries} attempts: {error_str}", "API")
+                raise e
+    
+    # This shouldn't be reached, but just in case
+    raise Exception("USPS validation failed after all retry attempts")
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize validation service on startup"""
     global validation_service
     
-    logger.info("Starting Enhanced Name & Address Validation API", "API")
+    logger.info("Starting Enhanced Name & Address Validation API with rate limiting", "API")
     
     try:
         validation_service = ValidationService()
         dict_status = "with dictionaries" if validation_service.dictionary_status else "AI-only mode"
         logger.info(f"Validation service initialized {dict_status}", "API")
+        logger.info("USPS rate limiting enabled: 2 calls per second", "API")
     except Exception as e:
         logger.error(f"Failed to initialize validation service: {e}", "API")
 
 # =============================================================================
-# ENHANCED CORE ENDPOINTS WITH 3-BUCKET CATEGORIZATION
+# CORE ENDPOINTS - WITH RATE LIMITING AND FIXED MULTI-CSV
 # =============================================================================
 
 @app.get("/health")
 async def health_check():
-    """Enhanced health check with 3-bucket categorization info"""
+    """Enhanced health check with rate limiting info"""
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
@@ -306,7 +379,14 @@ async def health_check():
             "3_bucket_categorization": True,
             "state_name_support": True,
             "international_detection": True,
+            "multi_csv_upload": True,
+            "usps_rate_limiting": True,
             "usps_validation": validation_service.is_address_validation_available() if validation_service else False
+        },
+        "rate_limiting": {
+            "usps_calls_per_second": 2.0,
+            "automatic_retry": True,
+            "max_retries": 3
         },
         "services": {
             "name_validation": validation_service.is_name_validation_available() if validation_service else False,
@@ -325,18 +405,24 @@ async def service_status():
     return ServiceStatus(**status)
 
 # =============================================================================
-# 1. ENHANCED SINGLE ADDRESS VALIDATION WITH CATEGORIZATION
+# 1. SINGLE ADDRESS VALIDATION WITH RATE LIMITING
 # =============================================================================
 
-@app.post("/api/validate-address-enhanced")
-async def validate_single_address_enhanced(address: AddressRecord):
+@app.post("/api/validate-address")
+async def validate_single_address(address: AddressRecord):
     """
-    Enhanced single address validation with 3-bucket categorization
+    Enhanced single address validation with 3-bucket categorization and rate limiting
     
-    Categorizes address as:
-    - US Valid: Ready for USPS validation
-    - International: Identified by postal code patterns
-    - Invalid: Missing data or invalid format
+    **Features:**
+    - ✅ 3-bucket categorization: US Valid | International | Invalid
+    - ✅ State name support: 'California' or 'CA'
+    - ✅ USPS rate limiting: 2 calls/second with retry logic
+    - ✅ Automatic error handling for HTTP 429 (Too Many Requests)
+    
+    **USPS Rate Limiting:**
+    - Maximum 2 calls per second to USPS API
+    - Automatic retry with exponential backoff
+    - Clear error messages for rate limit issues
     """
     
     if not validation_service:
@@ -353,22 +439,29 @@ async def validate_single_address_enhanced(address: AddressRecord):
                 "timestamp": datetime.now().isoformat(),
                 "category": categorization['category'],
                 "state_normalization_applied": categorization.get('state_normalization_applied', False),
-                "validation_notes": categorization['validation_notes']
+                "validation_notes": categorization['validation_notes'],
+                "rate_limited": False
             }
         }
         
-        # Step 2: If US valid, process with USPS
+        # Step 2: If US valid, process with USPS (with rate limiting)
         if categorization['category'] == 'us_valid' and validation_service.is_address_validation_available():
             try:
                 # Use normalized address for USPS
                 usps_address = address.dict()
                 usps_address['stateCd'] = categorization['normalized_state']
                 
-                usps_result = validation_service.validate_single_address(usps_address)
+                # Call USPS with rate limiting
+                usps_result = await validate_with_usps_rate_limited(usps_address)
+                
                 result["usps_result"] = usps_result
                 result["processing_info"]["usps_processed"] = True
                 result["processing_info"]["usps_valid"] = usps_result.get('mailabilityScore') == '1'
+                result["processing_info"]["rate_limited"] = True
                 
+            except HTTPException as e:
+                # Re-raise HTTP exceptions (like 429)
+                raise e
             except Exception as e:
                 result["processing_info"]["usps_error"] = str(e)
                 result["processing_info"]["usps_processed"] = False
@@ -379,46 +472,45 @@ async def validate_single_address_enhanced(address: AddressRecord):
         
         return result
         
+    except HTTPException as e:
+        # Re-raise HTTP exceptions with proper error details
+        raise e
     except Exception as e:
         logger.error(f"Enhanced address validation error: {e}", "API")
         raise HTTPException(status_code=500, detail=f"Address validation failed: {str(e)}")
 
-# Maintain backward compatibility
-@app.post("/api/validate-address", response_model=AddressValidationResult)
-async def validate_single_address(address: AddressRecord):
-    """
-    Legacy single address validation (maintains backward compatibility)
-    """
-    if not validation_service:
-        raise HTTPException(status_code=503, detail="Validation service not available")
-    
-    if not validation_service.is_address_validation_available():
-        raise HTTPException(status_code=503, detail="USPS API not configured")
-    
-    try:
-        result = validation_service.validate_single_address(address.dict())
-        return AddressValidationResult(**result)
-        
-    except Exception as e:
-        logger.error(f"Address validation error: {e}", "API")
-        raise HTTPException(status_code=500, detail=f"Address validation failed: {str(e)}")
-
 # =============================================================================
-# 2. ENHANCED BATCH CSV PROCESSING WITH 3-BUCKET CATEGORIZATION
+# 2. FIXED MULTI-CSV UPLOAD WITH RATE LIMITING
 # =============================================================================
 
-@app.post("/api/upload-address-csv-enhanced")
-async def upload_address_csv_enhanced(files: List[UploadFile] = File(...)):
+@app.post("/api/upload-address-csv")
+async def upload_address_csv(
+    files: List[UploadFile] = File(
+        ...,
+        description="Select multiple CSV files",
+        media_type="text/csv"
+    )
+):
     """
-    Enhanced CSV processing with 3-bucket categorization and state name support
+    Enhanced CSV processing with 3-bucket categorization, state name support, and USPS rate limiting
     
-    Process flow:
-    1. Auto-detect CSV columns
-    2. Categorize all addresses into 3 buckets:
-       - US Valid: Process with USPS API
-       - International: Identify and categorize
-       - Invalid: Error analysis
-    3. Return comprehensive results with statistics
+    **Multi-File Upload:**
+    - ✅ Upload up to 10 CSV files in one request
+    - ✅ Swagger UI supports multiple file selection
+    - ✅ Auto-detect any CSV column format
+    
+    **Rate Limiting:**
+    - ✅ USPS API: 2 calls per second with automatic retry
+    - ✅ Handles HTTP 429 errors gracefully
+    - ✅ Progress tracking for large batches
+    
+    **3-Bucket Categorization:**
+    - 🇺🇸 US Valid: Process with USPS API (rate limited)
+    - 🌍 International: Identify and categorize
+    - ❌ Invalid: Detailed error analysis
+    
+    **State Name Support:**
+    - 'California' → 'CA', 'New York' → 'NY', etc.
     """
     
     if not validation_service:
@@ -444,8 +536,9 @@ async def upload_address_csv_enhanced(files: List[UploadFile] = File(...)):
         file_summaries = []
         total_records = 0
         state_normalizations = 0
+        rate_limit_events = 0
         
-        logger.info(f"Processing {len(files)} CSV files with enhanced categorization", "API")
+        logger.info(f"Processing {len(files)} CSV files with enhanced categorization and rate limiting", "API")
         
         # Process each file
         for file_index, file in enumerate(files):
@@ -519,15 +612,15 @@ async def upload_address_csv_enhanced(files: List[UploadFile] = File(...)):
                     "reason": str(file_error)
                 })
         
-        # Process US valid addresses with USPS (if available)
+        # Process US valid addresses with USPS (with rate limiting)
         usps_processed = 0
         usps_successful = 0
         usps_failed = 0
         
         if all_us_valid and validation_service.is_address_validation_available():
-            logger.info(f"Processing {len(all_us_valid)} US addresses with USPS", "API")
+            logger.info(f"Processing {len(all_us_valid)} US addresses with USPS (rate limited)", "API")
             
-            for us_addr in all_us_valid:
+            for i, us_addr in enumerate(all_us_valid):
                 try:
                     # Prepare address for USPS
                     usps_address = {
@@ -540,7 +633,8 @@ async def upload_address_csv_enhanced(files: List[UploadFile] = File(...)):
                         'countryCd': 'US'
                     }
                     
-                    usps_result = validation_service.validate_single_address(usps_address)
+                    # Call USPS with rate limiting
+                    usps_result = await validate_with_usps_rate_limited(usps_address)
                     
                     # Enhanced result
                     enhanced_result = {
@@ -568,9 +662,41 @@ async def upload_address_csv_enhanced(files: List[UploadFile] = File(...)):
                         usps_successful += 1
                     else:
                         usps_failed += 1
+                    
+                    # Log progress for large batches
+                    if (i + 1) % 10 == 0:
+                        logger.info(f"USPS processing progress: {i + 1}/{len(all_us_valid)}", "API")
+                        
+                except HTTPException as e:
+                    # Handle rate limiting at batch level
+                    if e.status_code == 429:
+                        rate_limit_events += 1
+                        logger.warning(f"Rate limit hit during batch processing at address {i + 1}", "API")
+                        
+                        # Create rate limit error result
+                        error_result = {
+                            'source_file': us_addr['source_file'],
+                            'row_number': us_addr['row_number'],
+                            'category': 'us_rate_limited',
+                            'input_address': us_addr['complete_address'],
+                            'normalized_state': us_addr['normalized_state'],
+                            'state_normalization_applied': us_addr.get('state_normalization_applied', False),
+                            'usps_valid': False,
+                            'error_message': 'USPS API rate limit exceeded',
+                            'standardized_address': 'Rate Limit Error'
+                        }
+                        usps_results.append(error_result)
+                        usps_processed += 1
+                        usps_failed += 1
+                        
+                        # Continue with remaining addresses after a pause
+                        await asyncio.sleep(5)
+                        continue
+                    else:
+                        raise e
                         
                 except Exception as e:
-                    # Handle USPS errors
+                    # Handle other USPS errors
                     error_result = {
                         'source_file': us_addr['source_file'],
                         'row_number': us_addr['row_number'],
@@ -609,7 +735,9 @@ async def upload_address_csv_enhanced(files: List[UploadFile] = File(...)):
                     "successful_validations": usps_successful,
                     "failed_validations": usps_failed,
                     "success_rate": usps_successful / usps_processed if usps_processed > 0 else 0,
-                    "usps_api_available": validation_service.is_address_validation_available()
+                    "usps_api_available": validation_service.is_address_validation_available(),
+                    "rate_limit_events": rate_limit_events,
+                    "rate_limited": True
                 },
                 "state_normalization": {
                     "total_normalized": state_normalizations,
@@ -627,6 +755,8 @@ async def upload_address_csv_enhanced(files: List[UploadFile] = File(...)):
                 "3_bucket_categorization": True,
                 "state_name_normalization": True,
                 "international_detection": True,
+                "multi_file_processing": True,
+                "usps_rate_limiting": True,
                 "comprehensive_error_analysis": True
             }
         }
@@ -635,27 +765,32 @@ async def upload_address_csv_enhanced(files: List[UploadFile] = File(...)):
         logger.error(f"Enhanced CSV processing error: {e}", "API")
         raise HTTPException(status_code=500, detail=f"CSV processing failed: {str(e)}")
 
-# Maintain backward compatibility
-@app.post("/api/upload-address-csv")
-async def upload_address_csv_files(files: List[UploadFile] = File(...)):
-    """
-    Legacy CSV upload endpoint (maintains backward compatibility)
-    """
-    # This maintains the original functionality for existing integrations
-    if not validation_service:
-        raise HTTPException(status_code=503, detail="Validation service not available")
-    
-    # ... (keep existing logic for backward compatibility)
-    return {"message": "Use /api/upload-address-csv-enhanced for new features"}
-
 # =============================================================================
-# 3. ENHANCED NAME VALIDATION (EXISTING FUNCTIONALITY)
+# 3. NAME VALIDATION WITH FIXED MULTI-CSV
 # =============================================================================
 
 @app.post("/api/upload-names-csv")
-async def upload_names_csv_files(files: List[UploadFile] = File(...)):
-    """Enhanced name validation with dictionary lookup and AI fallback"""
-    # Keep existing implementation
+async def upload_names_csv(
+    files: List[UploadFile] = File(
+        ...,
+        description="Select multiple CSV files with name data",
+        media_type="text/csv"
+    )
+):
+    """
+    Enhanced name validation with dictionary lookup and AI fallback
+    
+    **Multi-File Upload:**
+    - ✅ Upload up to 10 CSV files in one request
+    - ✅ Swagger UI supports multiple file selection
+    - ✅ Auto-detect name column formats
+    
+    **Features:**
+    - ✅ Dictionary validation + AI fallback
+    - ✅ Gender prediction and organization detection
+    - ✅ Comprehensive validation statistics
+    """
+    
     if not validation_service:
         raise HTTPException(status_code=503, detail="Validation service not available")
     
@@ -762,6 +897,7 @@ async def upload_names_csv_files(files: List[UploadFile] = File(...)):
             "validation_info": {
                 "dictionary_validation": "Enhanced accuracy with dictionary lookup",
                 "ai_fallback": "Pattern matching for names not in dictionaries",
+                "multi_file_processing": True,
                 "supported_formats": [
                     "name, first_name, last_name columns",
                     "full_name, fullName, Name columns",
@@ -776,7 +912,16 @@ async def upload_names_csv_files(files: List[UploadFile] = File(...)):
 
 @app.post("/api/validate-names", response_model=NameValidationResponse)
 async def validate_names(request: NameValidationRequest):
-    """Enhanced name validation with dictionary lookup and AI fallback"""
+    """
+    Enhanced name validation with dictionary lookup and AI fallback
+    
+    **Features:**
+    - ✅ Dictionary validation for maximum accuracy
+    - ✅ AI fallback for names not in dictionaries
+    - ✅ Automatic gender prediction
+    - ✅ Organization detection
+    - ✅ Name parsing and standardization
+    """
     
     if not validation_service:
         raise HTTPException(status_code=503, detail="Validation service not available")
@@ -809,8 +954,8 @@ async def validate_names(request: NameValidationRequest):
 # UTILITY AND EXAMPLE ENDPOINTS
 # =============================================================================
 
-@app.get("/api/example-address-enhanced")
-async def get_example_address_enhanced():
+@app.get("/api/example-address")
+async def get_example_address():
     """Get example addresses for testing enhanced validation"""
     return {
         "examples": [
@@ -854,7 +999,8 @@ async def get_example_address_enhanced():
                 "expected_category": "invalid"
             }
         ],
-        "usage": "POST /api/validate-address-enhanced"
+        "usage": "POST /api/validate-address",
+        "rate_limiting_note": "USPS API is rate limited to 2 calls per second with automatic retry"
     }
 
 @app.get("/api/example-names")
@@ -882,8 +1028,8 @@ async def get_example_names():
         "usage": "POST /api/validate-names"
     }
 
-@app.get("/api/sample-csv-enhanced")
-async def get_sample_csv_enhanced():
+@app.get("/api/sample-csv")
+async def get_sample_csv():
     """Get sample CSV data for testing enhanced validation"""
     
     sample_data = [
@@ -919,9 +1065,17 @@ async def get_sample_csv_enhanced():
         "features_demonstrated": [
             "State name normalization (Arkansas → AR, New York → NY, California → CA)",
             "International address detection (Canadian postal code, UK postcode)",
-            "Mixed CSV column format handling"
+            "Mixed CSV column format handling",
+            "Multi-file upload support in Swagger UI",
+            "USPS rate limiting with retry logic"
         ],
-        "usage": "Save as .csv file and upload to /api/upload-address-csv-enhanced"
+        "usage": "Upload multiple CSV files to /api/upload-address-csv (max 10 files)",
+        "rate_limiting_info": {
+            "usps_calls_per_second": 2,
+            "automatic_retry": True,
+            "max_retries": 3,
+            "note": "Large batches will be automatically rate limited to prevent API errors"
+        }
     }
 
 # =============================================================================
@@ -957,11 +1111,13 @@ if __name__ == "__main__":
         print(f"🌐 Enhanced API starting on port {port}")
         print(f"📚 Documentation: http://localhost:{port}/docs")
         print(f"🔍 Health check: http://localhost:{port}/health")
-        print(f"📋 Enhanced endpoints:")
-        print(f"   • POST /api/validate-address-enhanced - Single address with 3-bucket categorization")
-        print(f"   • POST /api/upload-address-csv-enhanced - Multiple CSV with state name support") 
+        print(f"📋 Fixed endpoints:")
+        print(f"   • POST /api/validate-address - Single address with rate limiting")
+        print(f"   • POST /api/upload-address-csv - Multi-CSV upload (fixed)")
+        print(f"   • POST /api/upload-names-csv - Multi-name CSV processing (fixed)")
         print(f"   • POST /api/validate-names - Enhanced name validation")
-        print(f"   • GET /api/example-address-enhanced - Test examples")
+        print(f"✨ Features: Multi-CSV upload, USPS rate limiting, 3-bucket categorization")
+        print(f"🛡️  Rate limiting: 2 USPS calls/second with automatic retry")
         
         uvicorn.run(app, host="0.0.0.0", port=port)
         
